@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMART PRESENSI - PREsensi SENtral Sistem Integrasi</title>
+
+    <!-- Icon Website (Favicon Tab Browser) -->
+    <link rel="icon" type="image/png" href="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgIpJW9I9kygFde0tcluF66frz5cxRzG2O59ttSwz4mLYS9no7BCAYi6TzAPibwGbvssvgs_MDLoMfKQ0OnOjCeWh_uz4nRDRoGy1_wtZz7hZnlGrbHjbIy6V4JYq3jBKlb5k5Lm8e4u2Gu4ByBOZ66-RMTt55T6DK982YlgdF_eZHMfsooK6AA7Vwt13vu/s320/Logo.png">
+
+
+    <style>
+        /* Hilangkan semua jarak margin dasar */
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden; /* Mencegah scrollbar muncul di luar iframe */
+            background-color: #f8fafc; /* Warna background sama dengan Tailwind bg-slate-50 aplikasi Anda */
+        }
+
+        /* Container untuk memanipulasi posisi iframe */
+        .iframe-container {
+            position: absolute;
+            top: -3px; /* MENARIK IFRAME KE ATAS UNTUK MENYEMBUNYIKAN BANNER GOOGLE */
+            left: 0;
+            width: 100%;
+            height: calc(100% + 3px); /* Mengembalikan sisa tinggi di bawah agar tidak terpotong */
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="iframe-container">
+        <!-- Ganti dengan link Google Apps Script Anda -->
+        <!-- allow="fullscreen; screen-wake-lock" + allowfullscreen: WAJIB agar aplikasi di dalam iframe
+             boleh masuk mode layar penuh (fullscreen) dan menahan layar tetap menyala saat ujian. -->
+        <iframe
+            src="https://script.google.com/macros/s/AKfycbyG7hUzKSvnVtASlSI-s4Q8uWNm4PHATMVfAkeseJ6BytH6NP7-Lgwawyy0NYDg_Xqu/exec"
+            allow="fullscreen; screen-wake-lock"
+            allowfullscreen></iframe>
+    </div>
+</body>
+</html>
