@@ -38,11 +38,12 @@
 <body>
     <div class="iframe-container">
         <!-- Ganti dengan link Google Apps Script Anda -->
-        <!-- allow="fullscreen; screen-wake-lock" + allowfullscreen: WAJIB agar aplikasi di dalam iframe
+        <!-- allow="geolocation" & "camera": WAJIB agar GPS & kamera selfie di dalam iframe tidak diblokir browser.
+             allow="fullscreen; screen-wake-lock" + allowfullscreen: WAJIB agar aplikasi di dalam iframe
              boleh masuk mode layar penuh (fullscreen) dan menahan layar tetap menyala saat ujian. -->
         <iframe
             src="https://script.google.com/macros/s/AKfycbyG7hUzKSvnVtASlSI-s4Q8uWNm4PHATMVfAkeseJ6BytH6NP7-Lgwawyy0NYDg_Xqu/exec"
-            allow="fullscreen; screen-wake-lock"
+            allow="geolocation *; camera *; fullscreen; screen-wake-lock"
             allowfullscreen></iframe>
     </div>
 </body>
