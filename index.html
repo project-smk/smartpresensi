@@ -8,7 +8,6 @@
     <!-- Icon Website (Favicon Tab Browser) -->
     <link rel="icon" type="image/png" href="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgIpJW9I9kygFde0tcluF66frz5cxRzG2O59ttSwz4mLYS9no7BCAYi6TzAPibwGbvssvgs_MDLoMfKQ0OnOjCeWh_uz4nRDRoGy1_wtZz7hZnlGrbHjbIy6V4JYq3jBKlb5k5Lm8e4u2Gu4ByBOZ66-RMTt55T6DK982YlgdF_eZHMfsooK6AA7Vwt13vu/s320/Logo.png">
 
-
     <style>
         /* Hilangkan semua jarak margin dasar */
         body, html {
@@ -17,6 +16,7 @@
             height: 100%;
             overflow: hidden; /* Mencegah scrollbar muncul di luar iframe */
             background-color: #f8fafc; /* Warna background sama dengan Tailwind bg-slate-50 aplikasi Anda */
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         }
 
         /* Container untuk memanipulasi posisi iframe */
@@ -33,18 +33,149 @@
             height: 100%;
             border: none;
         }
+
+        /* ===== LAYAR LOADING ===== */
+        #loader {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            padding: 24px;
+            box-sizing: border-box;
+            background-color: #f8fafc;
+            transition: opacity .5s ease, visibility .5s ease;
+        }
+        #loader.hide {
+            opacity: 0;
+            visibility: hidden;
+        }
+        #loader img {
+            width: 88px;
+            height: 88px;
+            object-fit: contain;
+            animation: pulse 1.8s ease-in-out infinite;
+        }
+        #loader h1 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 700;
+            color: #0f172a;
+            letter-spacing: .5px;
+            text-align: center;
+        }
+        #loader p {
+            margin: 0;
+            font-size: 13px;
+            color: #64748b;
+            text-align: center;
+            min-height: 1.3em;
+        }
+        .bar {
+            width: min(280px, 80vw);
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .bar-fill {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #2563eb, #38bdf8);
+            border-radius: 999px;
+            transition: width .25s ease-out;
+        }
+        #percent {
+            font-size: 13px;
+            font-weight: 600;
+            color: #2563eb;
+            font-variant-numeric: tabular-nums;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.06); opacity: .85; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #loader img { animation: none; }
+            .bar-fill, #loader { transition: none; }
+        }
     </style>
 </head>
 <body>
+
+    <!-- Layar loading -->
+    <div id="loader" role="status" aria-live="polite">
+        <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgIpJW9I9kygFde0tcluF66frz5cxRzG2O59ttSwz4mLYS9no7BCAYi6TzAPibwGbvssvgs_MDLoMfKQ0OnOjCeWh_uz4nRDRoGy1_wtZz7hZnlGrbHjbIy6V4JYq3jBKlb5k5Lm8e4u2Gu4ByBOZ66-RMTt55T6DK982YlgdF_eZHMfsooK6AA7Vwt13vu/s320/Logo.png" alt="Logo Smart Presensi">
+        <h1>SMART PRESENSI</h1>
+        <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+        <span id="percent">0%</span>
+        <p id="statusText">Menyiapkan aplikasi...</p>
+    </div>
+
     <div class="iframe-container">
         <!-- Ganti dengan link Google Apps Script Anda -->
         <!-- allow="geolocation" & "camera": WAJIB agar GPS & kamera selfie di dalam iframe tidak diblokir browser.
              allow="fullscreen; screen-wake-lock" + allowfullscreen: WAJIB agar aplikasi di dalam iframe
              boleh masuk mode layar penuh (fullscreen) dan menahan layar tetap menyala saat ujian. -->
         <iframe
+            id="appFrame"
             src="https://script.google.com/macros/s/AKfycbyG7hUzKSvnVtASlSI-s4Q8uWNm4PHATMVfAkeseJ6BytH6NP7-Lgwawyy0NYDg_Xqu/exec"
             allow="geolocation *; camera *; fullscreen; screen-wake-lock"
             allowfullscreen></iframe>
     </div>
+
+    <script>
+        (function () {
+            var loader = document.getElementById('loader');
+            var fill = document.getElementById('barFill');
+            var percentEl = document.getElementById('percent');
+            var statusEl = document.getElementById('statusText');
+            var frame = document.getElementById('appFrame');
+
+            var progress = 0;
+            var done = false;
+
+            function render() {
+                var p = Math.floor(progress);
+                fill.style.width = p + '%';
+                percentEl.textContent = p + '%';
+                if (p < 30) statusEl.textContent = 'Menyiapkan aplikasi...';
+                else if (p < 70) statusEl.textContent = 'Menghubungkan ke server...';
+                else if (p < 100) statusEl.textContent = 'Memuat data...';
+                else statusEl.textContent = 'Selesai!';
+            }
+
+            // Progress simulasi: cepat di awal, melambat mendekati 90%
+            // (iframe tidak menyediakan progress asli, jadi ini estimasi)
+            var timer = setInterval(function () {
+                if (done) return;
+                var target = 90;
+                progress += (target - progress) * 0.04 + 0.15;
+                if (progress > target) progress = target;
+                render();
+            }, 120);
+
+            function finish() {
+                if (done) return;
+                done = true;
+                clearInterval(timer);
+                progress = 100;
+                render();
+                setTimeout(function () {
+                    loader.classList.add('hide');
+                    setTimeout(function () { loader.remove(); }, 600);
+                }, 350);
+            }
+
+            // Selesai saat iframe berhasil dimuat
+            frame.addEventListener('load', finish);
+
+            // Pengaman: jika load tidak terpicu, tutup loader setelah 20 detik
+            setTimeout(finish, 20000);
+        })();
+    </script>
 </body>
 </html>
