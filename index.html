@@ -114,8 +114,11 @@
         #selfieOverlay.show { display: flex; }
         #selfieOverlay video { width: min(92vw, 420px); aspect-ratio: 3 / 4; max-height: 70vh; object-fit: cover; border-radius: 14px; background: #000; transform: scaleX(-1); }
         #selfieOverlay p { margin: 0; color: #fff; font-size: 14px; font-weight: 600; text-align: center; }
-        #selfieOverlay .row { display: flex; gap: 10px; }
+        #selfieOverlay .row { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
         #selfieOverlay button { padding: 12px 26px; border: 0; border-radius: 10px; font-size: 14px; font-weight: 700; background: #fff; color: #0f172a; }
+        #selfieOverlay.rear video { transform: none; }
+        #selfieOverlay #selfieFlip { display: none; background: #e2e8f0; }
+        #selfieOverlay.canflip #selfieFlip { display: inline-block; }
         #selfieOverlay #selfieShot { background: #059669; color: #fff; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
@@ -140,10 +143,11 @@
 
     <!-- Layar selfie: hanya kamera langsung (tanpa pilihan galeri) -->
     <div id="selfieOverlay" role="dialog" aria-live="polite">
-        <p>Posisikan wajah di dalam bingkai</p>
+        <p id="selfieHint">Posisikan wajah di dalam bingkai</p>
         <video id="selfieVideo" playsinline muted></video>
         <div class="row">
             <button id="selfieShot" type="button">Ambil Foto</button>
+            <button id="selfieFlip" type="button">Balik Kamera</button>
             <button id="selfieCancel" type="button">Batal</button>
         </div>
     </div>
@@ -315,7 +319,7 @@
         (function () {
             var overlay = document.getElementById('selfieOverlay');
             var video = document.getElementById('selfieVideo');
-            var stream = null, target = null;
+            var stream = null, target = null, rearMode = false, canFlip = false;
             function okOrigin(o) { return /^https:\/\/([a-z0-9-]+\.)*(googleusercontent\.com|google\.com)$/.test(o); }
             function reply(type, extra) {
                 if (!target) return;
@@ -334,14 +338,14 @@
                 if (n === 'NotReadableError') return 'Kamera sedang dipakai aplikasi lain. Tutup aplikasi kamera lalu coba lagi.';
                 return 'Kamera tidak bisa dibuka' + (n ? ' (' + n + ')' : '') + '.';
             }
-            function start(src) {
-                if (stream) return;
-                target = src;
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    reply('SP_SELFIE_ERROR', { message: 'Browser tidak mendukung kamera langsung.' });
-                    return;
-                }
-                navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'user' } }, audio: false })
+            function hintText() {
+                if (!canFlip) return 'Posisikan wajah di dalam bingkai';
+                return rearMode ? 'Arahkan kamera belakang ke bukti/kondisi Anda' : 'Kamera depan aktif. Tekan Balik Kamera untuk kamera belakang';
+            }
+            function openStream() {
+                overlay.classList.toggle('rear', rearMode);
+                document.getElementById('selfieHint').textContent = hintText();
+                return navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: rearMode ? 'environment' : 'user' } }, audio: false })
                     .catch(function (e) {
                         return (e && (e.name === 'OverconstrainedError' || e.name === 'NotFoundError'))
                             ? navigator.mediaDevices.getUserMedia({ video: true, audio: false }) : Promise.reject(e);
@@ -350,17 +354,37 @@
                         stream = s; video.muted = true; video.srcObject = s;
                         overlay.classList.add('show');
                         var p = video.play(); if (p && p.catch) p.catch(function () {});
-                    })
-                    .catch(function (e) { reply('SP_SELFIE_ERROR', { message: errMsg(e) }); });
+                    });
             }
+            function start(src, facing) {
+                if (stream) return;
+                target = src;
+                // facing === 'environment' : mode foto bukti PKL/Izin/Sakit (mulai kamera belakang, boleh dibalik ke depan).
+                // Selain itu: selfie Hadir (kamera depan saja).
+                canFlip = (facing === 'environment');
+                rearMode = canFlip;
+                overlay.classList.toggle('canflip', canFlip);
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    reply('SP_SELFIE_ERROR', { message: 'Browser tidak mendukung kamera langsung.' });
+                    return;
+                }
+                openStream().catch(function (e) { reply('SP_SELFIE_ERROR', { message: errMsg(e) }); });
+            }
+            document.getElementById('selfieFlip').addEventListener('click', function () {
+                if (!stream || !canFlip) return;
+                stream.getTracks().forEach(function (t) { t.stop(); });
+                stream = null; video.srcObject = null;
+                rearMode = !rearMode;
+                openStream().catch(function (e) { stop(); reply('SP_SELFIE_ERROR', { message: errMsg(e) }); });
+            });
             document.getElementById('selfieShot').addEventListener('click', function () {
                 if (!stream || !video.videoWidth) return;
-                var w = video.videoWidth, h = video.videoHeight, maxDim = 400;
+                var w = video.videoWidth, h = video.videoHeight, maxDim = canFlip ? 900 : 400;
                 if (w > h && w > maxDim) { h = Math.round(h * maxDim / w); w = maxDim; }
                 else if (h >= w && h > maxDim) { w = Math.round(w * maxDim / h); h = maxDim; }
                 var c = document.createElement('canvas'); c.width = w; c.height = h;
                 c.getContext('2d').drawImage(video, 0, 0, w, h);
-                var dataUrl = c.toDataURL('image/jpeg', 0.5);
+                var dataUrl = c.toDataURL('image/jpeg', canFlip ? 0.6 : 0.5);
                 stop();
                 reply('SP_SELFIE_RESULT', { dataUrl: dataUrl });
             });
@@ -368,8 +392,8 @@
             window.addEventListener('message', function (e) {
                 if (!okOrigin(e.origin) || !e.data || typeof e.data !== 'object') return;
                 if (e.data.type === 'SP_SELFIE_REQUEST') {
-                    try { e.source.postMessage({ type: 'SP_SELFIE_ACK' }, '*'); } catch (x) {}
-                    start(e.source);
+                    try { e.source.postMessage({ type: 'SP_SELFIE_ACK', facing: e.data.facing === 'environment' ? 'environment' : 'user' }, '*'); } catch (x) {}
+                    start(e.source, e.data.facing);
                 }
             });
         })();
