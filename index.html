@@ -1,5 +1,11 @@
 <!DOCTYPE html>
 <!--
+  REVISI 94 — Backup sheet database (Admin > Atur Browser & Folder)
+  - Kolom link folder Google Drive (harus sudah dibagikan ke akun pemilik script sebagai Editor).
+  - Tombol "Backup Sekarang" (manual) dan sakelar backup otomatis tiap akhir bulan pukul 23.00 WIB.
+  - Menampilkan hasil backup terakhir. Backend: Code_revisi_94_backup_database.js.
+-->
+<!--
   REVISI 92 — Loading bar diganti dengan versi ringan dari aplikasi E-Learning rev. 18
   - Bar tipis di atas + pil status di bawah (menggantikan loading bar baterai rev. 89).
   - Timer 300 ms (sebelumnya 80 ms), tanpa backdrop-blur/shadow berat, timer mati saat idle.
@@ -847,6 +853,46 @@
               </button>
             </div>
             <p id="folderFotoStatus" class="text-xs text-slate-500"></p>
+          </div>
+        </div>
+
+        <div class="border-t pt-6 space-y-4">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-database text-primary-600 mr-2"></i>Backup Sheet Database</h2>
+            <p class="text-xs text-slate-500 mt-1">Salinan seluruh sheet database disimpan ke folder Google Drive pilihan Anda. Folder harus sudah dibagikan ke akun pemilik script dengan izin <b>Editor</b>.</p>
+          </div>
+          <div class="p-4 bg-slate-50 rounded-xl border space-y-3">
+            <label for="inputLinkFolderBackup" class="block text-xs font-semibold text-slate-600">Link Folder Google Drive</label>
+            <div class="flex gap-2">
+              <input type="url" id="inputLinkFolderBackup" placeholder="https://drive.google.com/drive/folders/..." class="flex-1 min-w-0 border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500">
+              <button id="btnSimpanFolderBackup" onclick="saveBackupFolder()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition flex items-center space-x-1.5">
+                <i class="fas fa-save"></i><span>Simpan</span>
+              </button>
+            </div>
+            <p id="folderBackupStatus" class="text-xs text-slate-500"></p>
+          </div>
+          <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+            <div>
+              <h4 class="text-sm font-bold text-slate-800">Backup Otomatis Akhir Bulan</h4>
+              <p class="text-xs text-slate-500 mt-0.5">Jika aktif, backup berjalan otomatis setiap hari terakhir bulan pukul 23.00 WIB (bisa terlambat s.d. 15 menit).</p>
+              <p id="backupJadwalInfo" class="text-xs text-primary-700 font-semibold mt-1"></p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggleBackupOtomatis" onchange="updateBackupOtomatis()" class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            </label>
+          </div>
+          <div class="p-4 bg-slate-50 rounded-xl border space-y-3">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h4 class="text-sm font-bold text-slate-800">Backup Manual</h4>
+                <p class="text-xs text-slate-500 mt-0.5">Buat salinan database sekarang juga.</p>
+              </div>
+              <button id="btnBackupManual" onclick="jalankanBackupManual()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition flex items-center space-x-1.5 whitespace-nowrap">
+                <i class="fas fa-cloud-arrow-up"></i><span>Backup Sekarang</span>
+              </button>
+            </div>
+            <p id="backupTerakhirInfo" class="text-xs text-slate-500"></p>
           </div>
         </div>
       </div>
@@ -3361,6 +3407,7 @@
         document.getElementById('toggleRequireChrome').checked = settings.wajibChrome;
       }).getBrowserSettings();
       loadFotoFolderSettings();
+      loadBackupSettings();
     }
 
     function renderFotoFolderStatus(res) {
@@ -3386,6 +3433,121 @@
         txt.textContent = 'Folder belum ada / tidak ditemukan di Drive. Klik Simpan untuk membuatnya dengan nama di atas.';
         el.appendChild(ic); el.appendChild(txt);
       }
+    }
+
+    // ===== BACKUP SHEET DATABASE (REVISI 94) =====
+    function renderBackupSettings(res) {
+      const st = document.getElementById('folderBackupStatus');
+      st.innerHTML = '';
+      const ic = document.createElement('i');
+      const txt = document.createElement('span');
+      if (res && res.ada) {
+        st.className = 'text-xs text-emerald-700';
+        ic.className = 'fas fa-circle-check mr-1';
+        txt.textContent = 'Folder tujuan: "' + (res.folderNama || '') + '". ';
+        st.appendChild(ic); st.appendChild(txt);
+        if (res.folderUrl) {
+          const a = document.createElement('a');
+          a.href = res.folderUrl; a.target = '_blank'; a.rel = 'noopener';
+          a.className = 'font-bold underline';
+          a.textContent = 'Buka folder';
+          st.appendChild(a);
+        }
+      } else {
+        st.className = 'text-xs text-amber-700';
+        ic.className = 'fas fa-triangle-exclamation mr-1';
+        txt.textContent = 'Folder backup belum diatur. Tempel link folder lalu klik Simpan.';
+        st.appendChild(ic); st.appendChild(txt);
+      }
+      const inp = document.getElementById('inputLinkFolderBackup');
+      if (res && res.linkTersimpan && !inp.value) inp.value = res.linkTersimpan;
+      document.getElementById('toggleBackupOtomatis').checked = !!(res && res.otomatis);
+      document.getElementById('backupJadwalInfo').textContent = (res && res.otomatis && res.jadwal) ? ('Backup berikutnya: ' + res.jadwal) : '';
+      renderBackupTerakhir(res && res.terakhir);
+    }
+
+    function renderBackupTerakhir(t) {
+      const el = document.getElementById('backupTerakhirInfo');
+      el.innerHTML = '';
+      if (!t) { el.className = 'text-xs text-slate-500'; el.textContent = 'Belum ada riwayat backup.'; return; }
+      const jenis = t.jenis === 'otomatis' ? 'otomatis' : 'manual';
+      if (t.ok) {
+        el.className = 'text-xs text-emerald-700';
+        el.appendChild(document.createTextNode('Backup terakhir (' + jenis + '): ' + t.waktu + ' - '));
+        if (t.url) {
+          const a = document.createElement('a');
+          a.href = t.url; a.target = '_blank'; a.rel = 'noopener';
+          a.className = 'font-bold underline';
+          a.textContent = t.nama || 'Buka file';
+          el.appendChild(a);
+        } else el.appendChild(document.createTextNode(t.nama || 'berhasil'));
+      } else {
+        el.className = 'text-xs text-rose-600';
+        el.textContent = 'Backup terakhir (' + jenis + ') GAGAL pada ' + t.waktu + ': ' + (t.pesan || '');
+      }
+    }
+
+    function loadBackupSettings() {
+      gsr().withSuccessHandler(res => {
+        if (res && res.success) renderBackupSettings(res);
+      }).withFailureHandler(() => {
+        const el = document.getElementById('folderBackupStatus');
+        el.className = 'text-xs text-rose-600';
+        el.textContent = 'Gagal memuat pengaturan backup.';
+      }).getBackupSettings();
+    }
+
+    function saveBackupFolder() {
+      const link = document.getElementById('inputLinkFolderBackup').value.trim();
+      if (!link) return alert('Link folder Google Drive tidak boleh kosong!');
+      const btn = document.getElementById('btnSimpanFolderBackup');
+      btn.disabled = true;
+      showStatusBar('Memeriksa folder backup...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        btn.disabled = false;
+        alert(res && res.message ? res.message : 'Selesai.');
+        loadBackupSettings();
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        btn.disabled = false;
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      }).saveBackupSettings({ link: link });
+    }
+
+    function jalankanBackupManual() {
+      const btn = document.getElementById('btnBackupManual');
+      btn.disabled = true;
+      showStatusBar('Membuat backup database, mohon tunggu...', 30);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        btn.disabled = false;
+        if (res && res.terakhir) renderBackupTerakhir(res.terakhir);
+        alert(res && res.message ? res.message : 'Selesai.');
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        btn.disabled = false;
+        alert('Backup gagal: ' + (err && err.message ? err.message : err));
+      }).backupSheetDatabaseManual();
+    }
+
+    function updateBackupOtomatis() {
+      const cb = document.getElementById('toggleBackupOtomatis');
+      const aktif = cb.checked;
+      showStatusBar('Menyimpan pengaturan backup otomatis...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (!res || !res.success) {
+          cb.checked = !aktif;
+          alert('Gagal: ' + (res && res.message ? res.message : 'tidak diketahui'));
+          return;
+        }
+        document.getElementById('backupJadwalInfo').textContent = (aktif && res.jadwal) ? ('Backup berikutnya: ' + res.jadwal) : '';
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        cb.checked = !aktif;
+        alert('Gagal: ' + (err && err.message ? err.message : err));
+      }).setBackupOtomatis({ aktif: aktif });
     }
 
     function loadFotoFolderSettings() {
