@@ -9,64 +9,59 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <script>
-  /* JEMBATAN API: pengganti google.script.run untuk halaman yang di-host di GitHub Pages.
-     Pemanggilan server dikirim lewat fetch (POST) ke Web App Apps Script tanpa cookie/akun Google,
-     sehingga tidak terpengaruh login banyak akun di Chrome. Kode aplikasi di bawah tidak perlu diubah. */
-  (function () {
-    /* Ruang penyimpanan terpisah per aplikasi: semua aplikasi di project-smk.github.io berbagi satu origin,
-       jadi kunci localStorage/sessionStorage diberi awalan sesuai folder agar tidak saling menimpa. */
-    try {
-      var NS = 'app:' + (location.pathname.replace(/index\.html$/, '').replace(/\/+$/, '') || '/') + ':';
-      var SP = Storage.prototype, gi = SP.getItem, si = SP.setItem, ri = SP.removeItem;
-      SP.getItem = function (k) { return gi.call(this, NS + k); };
-      SP.setItem = function (k, v) { return si.call(this, NS + k, v); };
-      SP.removeItem = function (k) { return ri.call(this, NS + k); };
-    } catch (e) {}
-
-    var API_URL = 'https://script.google.com/macros/s/AKfycbyG7hUzKSvnVtASlSI-s4Q8uWNm4PHATMVfAkeseJ6BytH6NP7-Lgwawyy0NYDg_Xqu/exec';
-
-    function panggil(fn, args, ok, fail, user) {
-      var gagal = function (pesan) {
-        if (typeof fail === 'function') fail(new Error(pesan), user);
-        else if (window.console) console.error(pesan);
-      };
-      fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // text/plain: tanpa preflight CORS
-        body: JSON.stringify({ fn: fn, args: args }),
-        redirect: 'follow'
-      }).then(function (res) {
-        return res.text();
-      }).then(function (txt) {
-        var d;
-        try { d = JSON.parse(txt); } catch (e) { return gagal('Error pada server: balasan tidak valid (Service unavailable).'); }
-        if (!d || d.ok !== true) return gagal((d && d.error) || 'Error pada server.');
-        if (typeof ok === 'function') ok(d.result, user);
-      }).catch(function () {
-        gagal('Error pada server: koneksi ke server gagal (timed out).');
-      });
-    }
-    function buat(ok, fail, user) {
-      return new Proxy({}, {
-        get: function (t, prop) {
-          if (typeof prop === 'symbol') return undefined;
-          if (prop === 'withSuccessHandler') return function (f) { return buat(f, fail, user); };
-          if (prop === 'withFailureHandler') return function (f) { return buat(ok, f, user); };
-          if (prop === 'withUserObject') return function (o) { return buat(ok, fail, o); };
-          return function () { panggil(String(prop), Array.prototype.slice.call(arguments), ok, fail, user); };
-        }
-      });
-    }
-    window.google = { script: { run: buat(null, null, undefined) } };
-  })();
-  </script>
   <title>SMART-PRESENSI - PREsensi SENtral Sistem Integrasi</title>
 
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+
+  <!-- ===== JEMBATAN GITHUB PAGES -> APPS SCRIPT (database tetap di Google Sheet) =====
+       Ganti URL di bawah dengan URL Web App hasil Deploy (berakhiran /exec). -->
+  <script>
+    const APPS_SCRIPT_URL = 'PASTE_URL_WEB_APP_ANDA_DI_SINI/exec';
+
+    (function () {
+      // Bila halaman dibuka dari dalam Apps Script sendiri, pakai google.script.run asli.
+      if (window.google && google.script && google.script.run) return;
+
+      function send(fn, args, st) {
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // tanpa preflight CORS
+          body: JSON.stringify({ fn: fn, args: args })
+        })
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function (d) {
+          if (d && d.error) throw new Error(d.error);
+          if (typeof st.ok === 'function') st.ok(d ? d.result : null, st.user);
+        })
+        .catch(function (e) {
+          if (typeof st.fail === 'function') st.fail(e instanceof Error ? e : new Error(String(e)), st.user);
+          else console.error(e);
+        });
+      }
+
+      function chain(st) {
+        return new Proxy({}, {
+          get: function (_, name) {
+            if (name === 'withSuccessHandler') return function (f) { return chain({ ok: f, fail: st.fail, user: st.user }); };
+            if (name === 'withFailureHandler') return function (f) { return chain({ ok: st.ok, fail: f, user: st.user }); };
+            if (name === 'withUserObject')     return function (u) { return chain({ ok: st.ok, fail: st.fail, user: u }); };
+            if (typeof name !== 'string' || name === 'then') return undefined;
+            return function () { send(name, Array.prototype.slice.call(arguments), st); };
+          }
+        });
+      }
+
+      window.google = { script: { run: chain({}) } };
+    })();
+  </script>
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
