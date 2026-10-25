@@ -234,16 +234,19 @@
     .login-btn:hover { background: var(--primary-800); }
     @media (max-width: 640px) { #loginForm input { font-size: 16px; } }
 
-    /* ---------- Tab (segmented control) — dipakai di semua menu tab ---------- */
+    /* ---------- Tab (kotak-kotak terpisah) — dipakai di semua menu tab ---------- */
     .tab-bar { --p: var(--primary-700); --bg: var(--slate-50); --pt: var(--slate-900);
-      display: flex; gap: 4px; padding: 4px 4px 12px; background: var(--slate-100); border-radius: 14px; overflow-x: auto; scrollbar-width: none; width: 100%; min-width: 0; box-sizing: border-box; }
+      display: flex; gap: 8px; padding: 3px 3px 12px; background: transparent; border-radius: 0; overflow-x: auto; scrollbar-width: none; width: 100%; min-width: 0; box-sizing: border-box; }
     .tab-bar::-webkit-scrollbar { display: none; }
-    .tab-btn { flex: none; padding: .55rem .9rem; border-radius: 10px; font-size: .78rem; font-weight: 600; color: var(--slate-500); white-space: nowrap; cursor: pointer;
-      background: transparent; box-shadow: none; transition: background .15s, color .15s, box-shadow .15s; }
-    /* Tab biasa saat disentuh kursor */
-    .tab-btn:hover:not(.tab-btn-active) { background: var(--bg); color: var(--pt); }
-    /* Tab aktif: warna utama situs, teks putih & tebal, bayangan lembut sewarna */
-    .tab-btn-active, .tab-btn-active:hover { background: var(--p); color: #fff; font-weight: 700; box-shadow: 0 8px 16px -8px var(--p); }
+    /* Tiap tab = satu kotak sendiri: latar putih, garis tepi, sudut sedikit membulat */
+    .tab-bar .tab-btn { flex: none; padding: .55rem .9rem; border-radius: 10px; font-size: .78rem; font-weight: 600; color: var(--slate-500); white-space: nowrap; cursor: pointer;
+      background: #fff; border: 1.5px solid var(--slate-200); box-shadow: 0 1px 2px rgb(20 27 46 / .06);
+      transition: background .15s, color .15s, box-shadow .15s, border-color .15s; }
+    /* Kotak biasa saat disentuh kursor: garis tepi & teks mengikuti warna utama tema */
+    .tab-bar .tab-btn:hover:not(.tab-btn-active) { background: var(--bg); color: var(--p); border-color: var(--p); }
+    /* Kotak aktif: terisi warna utama situs, teks putih & tebal, bayangan lembut sewarna */
+    .tab-bar .tab-btn-active, .tab-bar .tab-btn-active:hover { background: var(--p); border-color: var(--p); color: #fff; font-weight: 700; box-shadow: 0 8px 16px -8px var(--p); }
+    .tab-btn:focus-visible { outline: 2px solid var(--p); outline-offset: 2px; }
     /* Tanpa animasi geser / garis bawah / riak (ripple) */
     body .tab-btn:not(:disabled):active { transform: none; }
     @media (prefers-reduced-motion: reduce) { .tab-btn { transition: none !important; } }
@@ -251,7 +254,7 @@
     /* Di layar HP: tab tersusun rapi dalam beberapa baris (tidak perlu geser horizontal) */
     @media (max-width: 640px) {
       .tab-bar { flex-wrap: wrap; overflow-x: visible; justify-content: flex-start; }
-      .tab-btn { flex: 1 1 auto; min-width: max-content; text-align: center; justify-content: center; }
+      .tab-bar .tab-btn { flex: 1 1 auto; min-width: max-content; text-align: center; justify-content: center; }
     }
     /* Baris header yang membungkus tab-bar: turun ke bawah judul & selebar penuh di HP */
     .tab-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; width: 100%; min-width: 0; }
@@ -299,7 +302,8 @@
     .net-badge.net-offline .net-dot { background: #f87171; }
     .net-badge.net-slow, .net-badge.net-busy { background: rgb(251 191 36 / .16); border-color: rgb(251 191 36 / .5); }
     .net-badge.net-offline { background: rgb(248 113 113 / .18); border-color: rgb(248 113 113 / .55); }
-    @media (max-width: 480px) { .net-badge.net-ok .net-text { display: none; } .net-badge.net-ok { padding: .45rem; } }
+    /* Saat koneksi lancar, lencana tidak ditampilkan; muncul hanya bila Lambat / Server ramai / Offline agar pengguna tahu penyebabnya */
+    .net-badge.net-ok { display: none; }
     @media (prefers-reduced-motion: reduce) { .net-badge { transition: none; } }
   </style>
 <style id="spDialogStyle">
