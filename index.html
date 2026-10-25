@@ -38,6 +38,7 @@
       if (window.google && google.script && google.script.run) return;
 
       function send(fn, args, st) {
+        var t0 = Date.now();
         fetch(APPS_SCRIPT_URL, {
           method: 'POST',
           redirect: 'follow',
@@ -49,6 +50,7 @@
           return r.json();
         })
         .then(function (d) {
+          try { if (window.__netSrv) window.__netSrv(fn, Date.now() - t0); } catch (x) {}
           if (d && d.error) throw new Error(d.error);
           if (typeof st.ok === 'function') st.ok(d ? d.result : null, st.user);
         })
@@ -233,11 +235,18 @@
     @media (max-width: 640px) { #loginForm input { font-size: 16px; } }
 
     /* ---------- Tab (segmented control) — dipakai di semua menu tab ---------- */
-    .tab-bar { display: flex; gap: 4px; padding: 4px; background: var(--slate-100); border-radius: 14px; overflow-x: auto; scrollbar-width: none; width: 100%; min-width: 0; box-sizing: border-box; }
+    .tab-bar { --p: var(--primary-700); --bg: var(--slate-50); --pt: var(--slate-900);
+      display: flex; gap: 4px; padding: 4px 4px 12px; background: var(--slate-100); border-radius: 14px; overflow-x: auto; scrollbar-width: none; width: 100%; min-width: 0; box-sizing: border-box; }
     .tab-bar::-webkit-scrollbar { display: none; }
-    .tab-btn { flex: none; padding: .55rem .9rem; border-radius: 10px; font-size: .78rem; font-weight: 700; color: var(--slate-500); white-space: nowrap; }
-    .tab-btn:hover { color: var(--slate-800); }
-    .tab-btn-active, .tab-btn-active:hover { background: #fff; color: var(--primary-700); box-shadow: 0 1px 2px rgb(20 27 46 / .08), 0 0 0 1px var(--slate-200); }
+    .tab-btn { flex: none; padding: .55rem .9rem; border-radius: 10px; font-size: .78rem; font-weight: 600; color: var(--slate-500); white-space: nowrap; cursor: pointer;
+      background: transparent; box-shadow: none; transition: background .15s, color .15s, box-shadow .15s; }
+    /* Tab biasa saat disentuh kursor */
+    .tab-btn:hover:not(.tab-btn-active) { background: var(--bg); color: var(--pt); }
+    /* Tab aktif: warna utama situs, teks putih & tebal, bayangan lembut sewarna */
+    .tab-btn-active, .tab-btn-active:hover { background: var(--p); color: #fff; font-weight: 700; box-shadow: 0 8px 16px -8px var(--p); }
+    /* Tanpa animasi geser / garis bawah / riak (ripple) */
+    body .tab-btn:not(:disabled):active { transform: none; }
+    @media (prefers-reduced-motion: reduce) { .tab-btn { transition: none !important; } }
 
     /* Di layar HP: tab tersusun rapi dalam beberapa baris (tidak perlu geser horizontal) */
     @media (max-width: 640px) {
@@ -283,6 +292,15 @@
     .lb-spin { width:14px; height:14px; flex:none; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:lb-rot .7s linear infinite; }
     @keyframes lb-rot { to { transform:rotate(360deg); } }
     @media (prefers-reduced-motion:reduce) { #loadBar, #loadBarFill { transition:none !important; } .lb-spin { animation:none !important; } }
+    /* ---------- Lencana status koneksi (Revisi 97) ---------- */
+    .net-badge { display: inline-flex; align-items: center; gap: .35rem; padding: .3rem .6rem; border-radius: 9999px; background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .14); color: #fff; font-size: .68rem; font-weight: 700; line-height: 1; cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s; }
+    .net-dot { width: 8px; height: 8px; border-radius: 9999px; flex: none; background: #34d399; }
+    .net-badge.net-slow .net-dot, .net-badge.net-busy .net-dot { background: #fbbf24; }
+    .net-badge.net-offline .net-dot { background: #f87171; }
+    .net-badge.net-slow, .net-badge.net-busy { background: rgb(251 191 36 / .16); border-color: rgb(251 191 36 / .5); }
+    .net-badge.net-offline { background: rgb(248 113 113 / .18); border-color: rgb(248 113 113 / .55); }
+    @media (max-width: 480px) { .net-badge.net-ok .net-text { display: none; } .net-badge.net-ok { padding: .45rem; } }
+    @media (prefers-reduced-motion: reduce) { .net-badge { transition: none; } }
   </style>
 <style id="spDialogStyle">
 .sp-dlg-back{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;background:rgba(15,23,42,.55);opacity:0;transition:opacity .15s ease;font-family:inherit}
@@ -411,6 +429,20 @@
 })();
 </script>
 
+
+  <!-- ===== CACHE PERANGKAT: Service Worker (Revisi 96) =====
+       Menyimpan "kerangka" aplikasi (halaman, font, pustaka CDN) agar buka lebih cepat & tetap terbuka saat sinyal buruk.
+       Panggilan ke server Apps Script TIDAK pernah disimpan. File sw.js harus satu folder dengan halaman ini. -->
+  <script>
+    (function () {
+      if (!('serviceWorker' in navigator)) return;
+      if (!/^https?:$/.test(location.protocol)) return;
+      if (/googleusercontent\.com$|script\.google\.com$/.test(location.hostname)) return;   // dibuka dari dalam Apps Script
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () { /* tanpa SW aplikasi tetap berjalan normal */ });
+      });
+    })();
+  </script>
 </head>
 <body class="pjj-off bg-slate-50 text-slate-800 min-h-screen">
 
@@ -504,6 +536,7 @@
         </div>
       </div>
       <div id="userInfo" class="hidden flex items-center gap-2">
+        <button type="button" id="netBadge" class="net-badge net-ok" role="status" aria-live="polite" title="Status koneksi" onclick="NetStatus.check(true)"><i class="net-dot"></i><span class="net-text">Lancar</span></button>
         <div class="user-chip">
           <div class="user-avatar" id="userAvatarInitial">-</div>
           <div class="text-right text-xs pr-1 hidden sm:block">
@@ -1940,6 +1973,84 @@
       return isChromium && !isOpera && !isEdge && !isBrave && !isUC && !isSamsung;
     }
 
+    /* ===== STATUS KONEKSI (Revisi 97) =====
+       Membedakan 3 penyebab lambat agar pengguna tidak selalu mengira "server sibuk":
+       - Offline        : perangkat tidak punya internet.
+       - Lambat         : internet pengguna lambat (diukur dengan ping kecil ke situs ini sendiri, bukan ke Apps Script,
+                          ditambah navigator.connection bila browser mendukung).
+       - Server ramai   : internet lancar, tetapi 2 panggilan ringan ke Apps Script berturut-turut > 7 detik.
+       Ping hanya meminta header (HEAD) tiap 25 detik saat tab terlihat; tidak membawa data. */
+    const NetStatus = (() => {
+      let state = 'ok', rtts = [], srv = [], busyUntil = 0, probing = false, timer = null, lastMs = null;
+      const LABEL = { ok: 'Lancar', slow: 'Lambat', busy: 'Server ramai', offline: 'Offline' };
+      const SRV_LIGHT = { loginUser: 1, getPresensiConfig: 1, getStudentTodayAttendance: 1, getAvailableYears: 1, getThemeSettings: 1 };
+      const median = a => { const s = a.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+      function weakLink() {
+        const c = navigator.connection;
+        return !!(c && (/^(slow-2g|2g)$/.test(c.effectiveType || '') || (c.downlink > 0 && c.downlink < 0.4)));
+      }
+      function paint() {
+        const b = document.getElementById('netBadge'); if (!b) return;
+        b.className = 'net-badge net-' + state;
+        const t = b.querySelector('.net-text'); if (t) t.textContent = LABEL[state];
+        const sec = lastMs != null ? ' (±' + (lastMs / 1000).toFixed(1).replace('.', ',') + ' dtk)' : '';
+        b.title = ({
+          ok: 'Koneksi internet lancar. Ketuk untuk memeriksa ulang.',
+          slow: 'Koneksi internet Anda lambat' + sec + '. Proses mungkin butuh waktu lebih lama, mohon tunggu dan jangan tutup halaman.',
+          busy: 'Internet Anda lancar, tetapi server sedang ramai. Mohon tunggu sebentar.',
+          offline: 'Tidak ada koneksi internet. Periksa Wi-Fi / data seluler Anda.'
+        })[state];
+      }
+      function evaluate() {
+        let s = 'ok';
+        if (navigator.onLine === false) s = 'offline';
+        else if (weakLink() || (rtts.length && median(rtts) > 1800)) s = 'slow';
+        else if (Date.now() < busyUntil) s = 'busy';
+        state = s; paint();
+      }
+      function push(ms) { lastMs = ms >= 9999 ? null : ms; rtts.push(ms); if (rtts.length > 3) rtts.shift(); }
+      function probe() {
+        if (probing || location.protocol.indexOf('http') !== 0 || navigator.onLine === false) { evaluate(); return Promise.resolve(); }
+        probing = true;
+        const ctl = ('AbortController' in window) ? new AbortController() : null;
+        const t0 = performance.now(), to = setTimeout(() => { if (ctl) ctl.abort(); }, 8000);
+        return fetch('sw.js?_p=' + Date.now(), { method: 'HEAD', cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+          .then(() => push(performance.now() - t0))
+          .catch(() => push(9999))
+          .then(() => { clearTimeout(to); probing = false; evaluate(); });
+      }
+      function serverTiming(fn, ms) {
+        if (!SRV_LIGHT[fn]) return;
+        srv.push(ms); if (srv.length > 2) srv.shift();
+        if (srv.length === 2 && (srv[0] + srv[1]) / 2 > 7000) busyUntil = Date.now() + 60000;
+        else if (ms < 4000) { busyUntil = 0; srv = []; }
+        evaluate();
+      }
+      function retryText(action, a, m, tail) {
+        probe(); evaluate();   // pembaruan status untuk percobaan berikutnya
+        const n = ' (' + a + '/' + m + ')...' + (tail || '');
+        if (state === 'offline') return 'Tidak ada koneksi internet. ' + action + n;
+        if (state === 'slow') return 'Koneksi internet Anda lambat, ' + action + n;
+        return 'Server sedang ramai, ' + action + n;
+      }
+      function decorate(text) {
+        if (state === 'ok' || state === 'busy' || /koneksi|Server sedang/i.test(text)) return text;
+        return text + (state === 'offline' ? ' (tidak ada internet)' : ' (koneksi internet lambat)');
+      }
+      function check(manual) { return probe().then(() => { if (manual) paint(); }); }
+      function start() {
+        window.addEventListener('offline', evaluate);
+        window.addEventListener('online', () => { rtts = []; evaluate(); probe(); });
+        if (navigator.connection && navigator.connection.addEventListener) navigator.connection.addEventListener('change', evaluate);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) probe(); });
+        timer = setInterval(() => { if (!document.hidden) probe(); }, 25000);
+        evaluate(); probe();
+      }
+      return { start, check, retryText, decorate, serverTiming, get state() { return state; } };
+    })();
+    window.__netSrv = (fn, ms) => NetStatus.serverTiming(fn, ms);
+    NetStatus.start();
+
     // REVISI 92: loading bar ringan (modul "Loading" dari E-Learning rev. 18).
     // Tanda tangan showStatusBar(text) / hideStatusBar() tidak berubah, jadi semua pemanggil lama tetap jalan.
     // Hanya 1 timer (tiap 300 ms) yang menyentuh 1 elemen; berhenti total saat tidak ada aktivitas.
@@ -1984,6 +2095,7 @@
     // Pembungkus kompatibel untuk kode lama: satu aktivitas aktif pada satu waktu.
     let statusJobId = null;
     function showStatusBar(text) {
+      text = NetStatus.decorate(text || 'Tunggu sebentar');   // tambahkan keterangan bila internet lambat / offline
       if (statusJobId === null) statusJobId = Loading.start(text || 'Tunggu sebentar');
       else Loading.update(statusJobId, text || 'Tunggu sebentar');   // mis. "Server sedang ramai, mencoba lagi..."
     }
@@ -2017,7 +2129,64 @@
       try { logout(); } catch (x) {}
       authExpiring = false;
     }
-    function makeRunner_(r, hasFail) {
+    /* ===== CACHE PERANGKAT (Revisi 96) =====
+       Hanya untuk data LAPORAN baca-saja (rekap bulanan, rekap harian, laporan sekolah, daftar tahun).
+       Pola "stale-while-revalidate": data tersimpan langsung ditampilkan, lalu data terbaru dari server
+       diambil di latar belakang dan menggantikannya bila berbeda.
+       TIDAK pernah menyimpan: presensi hari ini, daftar input presensi, barcode, GPS, foto, login/sesi.
+       Setiap panggilan yang mengubah data (nama fungsi tidak berawalan "get") menghapus seluruh cache ini.
+       Cache dibersihkan saat logout, dipisah per pengguna, dan kedaluwarsa dalam 15 menit. */
+    const DEV_CACHE_FNS = { getWaliMonthlyReport: 1, getWaliMatrixMonthlyReport: 1, getKepsekReports: 1, getAvailableYears: 1 };
+    const DC_PREFIX = 'dc1:', DC_TTL = 15 * 60 * 1000, DC_MAX_ITEM = 450000, DC_MAX_ENTRIES = 24;
+    let dcGen = 0;   // naik setiap ada perubahan data -> respons lama yang terlambat tidak disimpan
+    function dcKeys_() {
+      const out = [];
+      try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf(DC_PREFIX) === 0) out.push(k); } } catch (e) {}
+      return out;
+    }
+    function dcClear_() { try { dcKeys_().forEach(k => localStorage.removeItem(k)); } catch (e) {} }
+    function dcKey_(fn, args) {
+      const u = currentUser || {};
+      return DC_PREFIX + (u.role || '') + '|' + (u.username || u.nisn || '') + '|' + fn + '|' + JSON.stringify(args);
+    }
+    function dcGet_(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const p = raw.indexOf('|');
+        const t = parseInt(raw.substring(0, p), 10);
+        if (!t || Date.now() - t > DC_TTL) { localStorage.removeItem(key); return null; }
+        return raw.substring(p + 1);
+      } catch (e) { return null; }
+    }
+    function dcPut_(key, str) {
+      try {
+        if (!str || str.length > DC_MAX_ITEM) return;
+        const keys = dcKeys_();
+        if (keys.length >= DC_MAX_ENTRIES) {   // buang yang paling lama
+          keys.map(k => ({ k: k, t: parseInt((localStorage.getItem(k) || '0').split('|')[0], 10) || 0 }))
+              .sort((a, b) => a.t - b.t).slice(0, keys.length - DC_MAX_ENTRIES + 1)
+              .forEach(o => localStorage.removeItem(o.k));
+        }
+        localStorage.setItem(key, Date.now() + '|' + str);
+      } catch (e) { dcClear_(); }   // kuota penuh -> kosongkan cache ini saja, aplikasi tetap jalan
+    }
+    function dcRun_(t, hasFail, p, a, okH) {
+      const key = dcKey_(p, a), gen0 = dcGen, cachedStr = dcGet_(key);
+      let served = false;
+      if (cachedStr) { try { okH(JSON.parse(cachedStr)); served = true; } catch (e) { console.error(e); } }
+      const fresh = res => {
+        let s = null;
+        try { s = (res && typeof res === 'object') ? JSON.stringify(res) : null; } catch (e) {}
+        if (s && dcGen === gen0 && res.success !== false) dcPut_(key, s);
+        if (served && s === cachedStr) return;   // sama persis -> tidak perlu menggambar ulang
+        okH(res);
+      };
+      const r = t.withSuccessHandler(fresh);
+      const base = hasFail ? r : r.withFailureHandler(e => { if (isAuthExpiredErr_(e)) handleAuthExpired_(); else console.error(e); });
+      return base[p](authToken_(), ...a);
+    }
+    function makeRunner_(r, hasFail, okH) {
       return new Proxy(r, {
         get(t, p) {
           const v = t[p];
@@ -2026,10 +2195,15 @@
             return h => makeRunner_(v.call(t, e => {
               if (isAuthExpiredErr_(e)) { handleAuthExpired_(); return; }
               if (typeof h === 'function') h(e);
-            }), true);
+            }), true, okH);
           }
-          if (p === 'withSuccessHandler' || p === 'withUserObject') return (...a) => makeRunner_(v.apply(t, a), hasFail);
+          if (p === 'withSuccessHandler') return (...a) => makeRunner_(v.apply(t, a), hasFail, a[0]);
+          if (p === 'withUserObject') return (...a) => makeRunner_(v.apply(t, a), hasFail, okH);
           return (...a) => {
+            if (!PUBLIC_SERVER_FNS[p]) {
+              if (DEV_CACHE_FNS[p] && typeof okH === 'function' && currentUser) return dcRun_(t, hasFail, p, a, okH);
+              if (!/^get/.test(p)) { dcGen++; dcClear_(); }   // ada perubahan data -> cache laporan perangkat dibuang
+            }
             const base = hasFail ? t : t.withFailureHandler(e => { if (isAuthExpiredErr_(e)) handleAuthExpired_(); else console.error(e); });
             return PUBLIC_SERVER_FNS[p] ? base[p](...a) : base[p](authToken_(), ...a);
           };
@@ -2304,7 +2478,7 @@
 
       runServer('loginUser', [u, p], {
         retries: 3,
-        onRetry: (a, m) => showStatusBar(`Server sedang ramai, mencoba lagi (${a}/${m})...`, 30)
+        onRetry: (a, m) => showStatusBar(NetStatus.retryText('mencoba lagi', a, m), 30)
       }).then(res => {
         hideStatusBar();
         if (res && res.success) {
@@ -2329,6 +2503,7 @@
       stopBarcodeTab();
       if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
       clearSavedSession();
+      dcGen++; dcClear_();   // cache laporan di perangkat tidak boleh terbawa ke akun lain
       currentUser = null;
       appCache = { attendanceData: null, monthlyReportData: null, matrixReportData: null, studentsData: null };
       document.getElementById('userInfo').classList.add('hidden');
@@ -3197,7 +3372,7 @@
       showStatusBar('Memeriksa pengaturan & posisi GPS...', 30);
 
       // 1 panggilan untuk semua pengaturan (sering sudah tersedia dari pemuatan awal dashboard)
-      fetchPresensiConfig((a, m) => showStatusBar(`Server sedang ramai, mencoba lagi (${a}/${m})...`, 30)).then(cfg => {
+      fetchPresensiConfig((a, m) => showStatusBar(NetStatus.retryText('mencoba lagi', a, m), 30)).then(cfg => {
        try {
         cfg = cfg || {};
 
@@ -3288,7 +3463,7 @@
 
           runServer('uploadStudentAttendance', [payload], {
             retries: 4,
-            onRetry: (a, m) => showStatusBar(`Server sedang ramai, mengirim ulang otomatis (${a}/${m})... Jangan tutup halaman.`, 70)
+            onRetry: (a, m) => showStatusBar(NetStatus.retryText('mengirim ulang otomatis', a, m, ' Jangan tutup halaman.'), 70)
           }).then(res => {
             hideStatusBar();
             presensiSubmitting = false;
