@@ -300,6 +300,9 @@
 .tab-bar .tab-btn:hover:not(.tab-btn-active) > i:first-child { transform: translateY(-1px) scale(1.12); opacity: 1; }
 .tab-bar .tab-btn-active, .tab-bar .tab-btn-active:hover { background: var(--p); background: linear-gradient(135deg, var(--p), color-mix(in srgb, var(--p) 72%, #000)); }
 .tab-bar .tab-btn-active > i:first-child { color: var(--secondary-300, #efc865); opacity: 1; }
+/* Tab tidak aktif: tulisan hitam, garis tepi lebih tebal (berlaku di semua akun) */
+.tab-bar .tab-btn:not(.tab-btn-active) { color: #000; font-weight: 700; border-width: 2px; border-color: var(--slate-300, #cbd5e1); }
+.tab-bar .tab-btn:hover:not(.tab-btn-active) { color: #000; border-color: var(--p); }
 /* Kartu: sudut lebih lembut & bayangan berlapis */
 .rounded-2xl.shadow-sm { box-shadow: 0 1px 2px rgb(20 27 46 / .05), 0 10px 24px -14px rgb(20 27 46 / .18); border-color: var(--slate-200); }
 /* Tabel: judul kolom rapi, baris disorot penanda emas saat disentuh */
