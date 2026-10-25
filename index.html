@@ -1200,9 +1200,9 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
 
       <!-- Pilihan Bulanan/Harian: hanya tampil saat tab Rekap digabung (saklar Scan Barcode aktif) -->
       <div id="waliRekapSubBar" class="hidden">
-        <div class="tab-bar" style="width:auto;padding-bottom:4px">
-          <button id="waliRekapSubMatrix" type="button" onclick="setWaliRekapSub('matrix')" class="tab-btn tab-btn-active"><i class="fas fa-table-list mr-1"></i>Harian</button>
-          <button id="waliRekapSubRekap" type="button" onclick="setWaliRekapSub('rekap')" class="tab-btn"><i class="fas fa-calendar-days mr-1"></i>Bulanan</button>
+        <div class="inline-flex bg-slate-100 border rounded-xl p-1 gap-1">
+          <button id="waliRekapSubRekap" type="button" onclick="setWaliRekapSub('rekap')" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-white shadow text-primary-700"><i class="fas fa-calendar-days mr-1.5"></i>Bulanan</button>
+          <button id="waliRekapSubMatrix" type="button" onclick="setWaliRekapSub('matrix')" class="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-500"><i class="fas fa-table-list mr-1.5"></i>Harian</button>
         </div>
       </div>
 
@@ -2324,11 +2324,10 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     });
 
     /* ===== SESI LOGIN =====
-       Admin, Guru Wali Kelas, Sekretaris: disimpan di sessionStorage -> tetap login saat halaman
+       Admin, Guru Wali Kelas, Sekretaris, Kepala Sekolah, Wakil: disimpan di sessionStorage -> tetap login saat halaman
                 di-refresh, tetapi tab baru / tab yang ditutup wajib login ulang.
-       Kepala Sekolah, Wakil, Siswa, Barcode: disimpan di localStorage -> login bertahan di browser
-                (server menerbitkan token tahan lama ~30 hari untuk Kepsek/Wakil/Siswa; keluar manual = hapus). */
-    const SESSION_PER_TAB_ROLES = ['Admin', 'Guru Wali Kelas', 'Sekretaris'];
+       Lainnya (Siswa, Barcode): tetap di localStorage (login bertahan seperti semula). */
+    const SESSION_PER_TAB_ROLES = ['Admin', 'Guru Wali Kelas', 'Sekretaris', 'Kepala Sekolah', 'Wakil Kepala Sekolah'];
     function saveSession(user) {
       try {
         if (user && SESSION_PER_TAB_ROLES.indexOf(user.role) >= 0) {
@@ -2419,12 +2418,11 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         } else {
           document.getElementById('panelTitleText').innerText = `Panel Guru Wali Kelas`;
           document.getElementById('waliInfoTag').innerText = `Wali Kelas ${user.kelas} - ${user.jurusan}`;
-          ['tabBuktiFotoBtn', 'tabKeteranganBtn', 'tabSiswaBtn', 'tabAkunBtn'].forEach(id => {
+          ['tabRekapBtn', 'tabMatrixBtn', 'tabBuktiFotoBtn', 'tabKeteranganBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = 'inline-block';
           });
-          // Rekap Bulanan/Harian/Rekap(gabung) & Barcode ditentukan setelah saklar Scan Barcode diketahui (refreshWaliBarcodeTabs) -> tidak berkedip
-          ['tabRekapBtn', 'tabMatrixBtn', 'tabRekapGabungBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn'].forEach(id => {
+          ['tabBarcodeBtn', 'tabVerifBarcodeBtn'].forEach(id => {   // tampil/tidaknya mengikuti saklar Scan Barcode di panel admin
             const el = document.getElementById(id);
             if (el) el.style.display = 'none';
           });
@@ -4220,22 +4218,23 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     }
 
     function setWaliRekapSub(sub) {
-      window._waliRekapSub = (sub === 'rekap') ? 'rekap' : 'matrix';
+      window._waliRekapSub = (sub === 'matrix') ? 'matrix' : 'rekap';
       switchWaliTab('rekapgabung');
     }
 
     function switchWaliTab(tab) {
       // Mode gabung: tombol "Rekap" memakai pilihan Bulanan/Harian; tab lama diarahkan ke tombol gabungan
       let btnKey = tab;
-      if (tab === 'rekapgabung') tab = (window._waliRekapSub === 'rekap') ? 'rekap' : 'matrix';   // default: Harian dulu
+      if (tab === 'rekapgabung') tab = (window._waliRekapSub === 'matrix') ? 'matrix' : 'rekap';
       if ((tab === 'rekap' || tab === 'matrix') && window._waliRekapMerged) { btnKey = 'rekapgabung'; window._waliRekapSub = tab; }
       const subBar = document.getElementById('waliRekapSubBar');
       if (subBar) {
         subBar.classList.toggle('hidden', btnKey !== 'rekapgabung');
         const onM = (tab === 'matrix');
         const sr = document.getElementById('waliRekapSubRekap'), sm = document.getElementById('waliRekapSubMatrix');
-        if (sr) sr.className = onM ? 'tab-btn' : 'tab-btn tab-btn-active';
-        if (sm) sm.className = onM ? 'tab-btn tab-btn-active' : 'tab-btn';
+        const on = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-white shadow text-primary-700', off = 'px-4 py-1.5 rounded-lg text-xs font-bold text-slate-500';
+        if (sr) sr.className = onM ? off : on;
+        if (sm) sm.className = onM ? on : off;
       }
       const tabIds = ['waliTabInput', 'waliTabRekap', 'waliTabMatrix', 'waliTabBuktiFoto', 'waliTabSiswa', 'waliTabAkun', 'waliTabBarcode', 'waliTabVerifBarcode', 'waliTabRekapAbsensi', 'waliTabKeterangan'];
       tabIds.forEach((id, idx) => {
