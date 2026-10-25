@@ -1,80 +1,5650 @@
-/* SMART-PRESENSI — Service Worker (cache perangkat), Revisi 96
-   Prinsip aman:
-   - Hanya menangani permintaan GET. POST ke server Apps Script, kamera, GPS, upload foto tidak tersentuh.
-   - Halaman/berkas milik sendiri: JARINGAN DULU (selalu versi terbaru), cache hanya cadangan saat offline/lambat.
-   - Pustaka & font CDN: cache dulu lalu diperbarui di latar belakang (stale-while-revalidate).
-   - Naikkan VERSION bila ingin memaksa semua perangkat membuang cache lama. */
-const VERSION = 'sp-v96';
-const CACHE_APP = 'sp-app-' + VERSION;
-const CACHE_CDN = 'sp-cdn-' + VERSION;
-const CDN_HOSTS = [
-  'cdn.tailwindcss.com', 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com',
-  'fonts.googleapis.com', 'fonts.gstatic.com'
-];
-const NETWORK_TIMEOUT_MS = 4000;
+<!DOCTYPE html>
+<!--
+  REVISI 95 — Jadwal backup otomatis fleksibel (Admin > Atur Browser & Folder)
+  - Pilihan frekuensi (setiap hari / setiap akhir bulan), jam backup (WIB), dan "simpan N backup otomatis terakhir".
+  - Bawaan sama dengan revisi 94 (akhir bulan 23.00, tidak ada yang dihapus). Backend: Code revisi 95.
+-->
+<!--
+  REVISI 94 — Backup sheet database (Admin > Atur Browser & Folder)
+  - Kolom link folder Google Drive (harus sudah dibagikan ke akun pemilik script sebagai Editor).
+  - Tombol "Backup Sekarang" (manual) dan sakelar backup otomatis tiap akhir bulan pukul 23.00 WIB.
+  - Menampilkan hasil backup terakhir. Backend: Code_revisi_94_backup_database.js.
+-->
+<!--
+  REVISI 92 — Loading bar diganti dengan versi ringan dari aplikasi E-Learning rev. 18
+  - Bar tipis di atas + pil status di bawah (menggantikan loading bar baterai rev. 89).
+  - Timer 300 ms (sebelumnya 80 ms), tanpa backdrop-blur/shadow berat, timer mati saat idle.
+  - showStatusBar()/hideStatusBar() tetap sama; backend (kode_revisi_91_*.js) tidak berubah.
+-->
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>SMART-PRESENSI - PREsensi SENtral Sistem Integrasi</title>
 
-self.addEventListener('install', () => { self.skipWaiting(); });
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-self.addEventListener('activate', event => {
-  event.waitUntil((async () => {
-    const names = await caches.keys();
-    await Promise.all(names.filter(n => n.indexOf('sp-') === 0 && n !== CACHE_APP && n !== CACHE_CDN).map(n => caches.delete(n)));
-    await self.clients.claim();
-  })());
-});
 
-self.addEventListener('message', event => {
-  if (event.data === 'SKIP_WAITING') self.skipWaiting();
-  if (event.data === 'CLEAR_CACHES') event.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.indexOf('sp-') === 0).map(k => caches.delete(k)))));
-});
+  <!-- ===== JEMBATAN GITHUB PAGES -> APPS SCRIPT (database tetap di Google Sheet) =====
+       Ganti URL di bawah dengan URL Web App hasil Deploy (berakhiran /exec). -->
+  <script>
+    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyG7hUzKSvnVtASlSI-s4Q8uWNm4PHATMVfAkeseJ6BytH6NP7-Lgwawyy0NYDg_Xqu/exec';
 
-function isCacheable(res) { return res && (res.ok || res.type === 'opaque'); }
+    (function () {
+      // Bila halaman dibuka dari dalam Apps Script sendiri, pakai google.script.run asli.
+      if (window.google && google.script && google.script.run) return;
 
-async function networkFirst(req) {
-  const cache = await caches.open(CACHE_APP);
-  try {
-    const res = await Promise.race([
-      fetch(req),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), NETWORK_TIMEOUT_MS))
-    ]);
-    if (res && res.ok) cache.put(req, res.clone()).catch(() => {});
-    return res;
-  } catch (e) {
-    const hit = await cache.match(req, { ignoreSearch: req.mode === 'navigate' });
-    if (hit) return hit;
-    return fetch(req);   // tidak ada cadangan: tunggu jaringan apa adanya
+      function send(fn, args, st) {
+        var t0 = Date.now();
+        fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },   // tanpa preflight CORS
+          body: JSON.stringify({ fn: fn, args: args })
+        })
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function (d) {
+          try { if (window.__netSrv) window.__netSrv(fn, Date.now() - t0); } catch (x) {}
+          if (d && d.error) throw new Error(d.error);
+          if (typeof st.ok === 'function') st.ok(d ? d.result : null, st.user);
+        })
+        .catch(function (e) {
+          if (typeof st.fail === 'function') st.fail(e instanceof Error ? e : new Error(String(e)), st.user);
+          else console.error(e);
+        });
+      }
+
+      function chain(st) {
+        return new Proxy({}, {
+          get: function (_, name) {
+            if (name === 'withSuccessHandler') return function (f) { return chain({ ok: f, fail: st.fail, user: st.user }); };
+            if (name === 'withFailureHandler') return function (f) { return chain({ ok: st.ok, fail: f, user: st.user }); };
+            if (name === 'withUserObject')     return function (u) { return chain({ ok: st.ok, fail: st.fail, user: u }); };
+            if (typeof name !== 'string' || name === 'then') return undefined;
+            return function () { send(name, Array.prototype.slice.call(arguments), st); };
+          }
+        });
+      }
+
+      window.google = { script: { run: chain({}) } };
+    })();
+  </script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+  <script>
+    /* PALET IDENTITAS SEKOLAH — samakan dengan warna resmi SMK Swasta
+       Nusantara Lubuk Pakam (navy + emas). Ganti hex di sini untuk
+       mengubah seluruh tema aplikasi dari satu tempat. */
+    const THEME = {
+      primary: {
+        50:  '#eef2fb', 100: '#d9e2f5', 200: '#b3c5eb', 300: '#8ca8e0', 400: '#5f85d1',
+        500: '#3a63b8', 600: '#2a4d94', 700: '#1e3a6f', 800: '#16294f', 900: '#0f1c37',
+      },
+      secondary: {
+        50:  '#fdf8ed', 100: '#faeecb', 200: '#f5dc98', 300: '#efc865', 400: '#e6b03c',
+        500: '#cf9526', 600: '#a8761c', 700: '#7d5714', 800: '#583c0d', 900: '#3a2708',
+      },
+      slate: {
+        50:  '#f5f7fb', 100: '#eceff6', 200: '#dce2ee', 300: '#c0c9dc', 400: '#8f9bb4',
+        500: '#65728e', 600: '#4b5873', 700: '#374259', 800: '#242d43', 900: '#141b2e',
+      },
+    };
+    /* ===== TEMA DINAMIS (Revisi 62: menu Admin > Tampilan) =====
+       THEME di atas = palet bawaan. Tema pilihan admin disimpan di server
+       (getThemeSettings) dan di-cache di localStorage agar tidak berkedip. */
+    function _thHexToRgb(hex) {
+      var h = String(hex).replace('#', '');
+      return [parseInt(h.substr(0, 2), 16), parseInt(h.substr(2, 2), 16), parseInt(h.substr(4, 2), 16)];
+    }
+    function _thRgbToHex(c) {
+      return '#' + c.map(function (v) { return Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0'); }).join('');
+    }
+    function _thMix(a, b, t) { return a.map(function (v, i) { return v + (b[i] - v) * t; }); }
+    /* Buat skala 50..900 dari 1 warna dasar (dianggap shade 500). */
+    function buildScale(hex) {
+      var base = _thHexToRgb(hex), W = [255, 255, 255], K = [0, 0, 0];
+      var steps = { 50: [W, .93], 100: [W, .85], 200: [W, .70], 300: [W, .50], 400: [W, .25],
+                    600: [K, .20], 700: [K, .40], 800: [K, .60], 900: [K, .76] };
+      var out = { 500: _thRgbToHex(base) };
+      Object.keys(steps).forEach(function (k) { out[k] = _thRgbToHex(_thMix(base, steps[k][0], steps[k][1])); });
+      return out;
+    }
+    function resolveScale(name, cfg) {
+      if (name === 'slate') return THEME.slate;
+      if (!cfg || !cfg[name] || (cfg.preset || cfg.id) === 'default') return THEME[name];
+      return buildScale(cfg[name]);
+    }
+    /* Terapkan tema ke seluruh halaman (target default <html>) atau ke 1 elemen (untuk pratinjau). */
+    function applyAppTheme(cfg, target) {
+      var el = target || document.documentElement;
+      ['primary', 'secondary', 'slate'].forEach(function (name) {
+        var scale = resolveScale(name, cfg);
+        Object.keys(scale).forEach(function (k) {
+          el.style.setProperty('--' + name + '-' + k, scale[k]);
+          el.style.setProperty('--' + name + '-' + k + '-rgb', _thHexToRgb(scale[k]).join(' '));
+        });
+      });
+    }
+    function twColors() {
+      var o = {};
+      ['primary', 'secondary', 'slate'].forEach(function (n) {
+        o[n] = {};
+        Object.keys(THEME[n]).forEach(function (k) { o[n][k] = 'rgb(var(--' + n + '-' + k + '-rgb) / <alpha-value>)'; });
+      });
+      return o;
+    }
+    (function () {
+      var cached = null;
+      try { cached = JSON.parse(localStorage.getItem('app_theme') || 'null'); } catch (e) {}
+      applyAppTheme(cached);
+    })();
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: twColors(),
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', '"Segoe UI"', 'Roboto', 'Arial', 'sans-serif'],
+            display: ['"Bricolage Grotesque"', '"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+          },
+          borderRadius: { lg: '10px', xl: '14px', '2xl': '20px' },
+          boxShadow: {
+            sm: '0 1px 2px 0 rgb(20 27 46 / 0.05)',
+            DEFAULT: '0 1px 3px 0 rgb(20 27 46 / 0.08), 0 1px 2px -1px rgb(20 27 46 / 0.06)',
+            md: '0 4px 10px -2px rgb(20 27 46 / 0.08), 0 2px 4px -2px rgb(20 27 46 / 0.05)',
+            lg: '0 10px 24px -6px rgb(20 27 46 / 0.14), 0 4px 8px -4px rgb(20 27 46 / 0.06)',
+            xl: '0 1px 2px rgb(20 27 46 / 0.04), 0 12px 32px -12px rgb(20 27 46 / 0.12)',
+          },
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      --font-display: "Bricolage Grotesque", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+      --header-h: 60px;
+      color-scheme: light;
+    }
+    html, body { overflow-x: hidden; max-width: 100%; }
+    body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+    h1, h2, h3.font-display { font-family: var(--font-display); letter-spacing: -0.015em; }
+
+    body :is(input:not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea) {
+      transition: border-color .15s, box-shadow .15s, background-color .15s;
+    }
+    body :is(input:not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea):focus {
+      outline: none; border-color: var(--primary-500);
+      box-shadow: 0 0 0 3px rgb(var(--primary-500-rgb) / .18);
+    }
+    body button:not(:disabled):active { transform: translateY(.5px) scale(.985); }
+    /* Saklar admin "Status PJJ": saat mati, semua elemen bertanda pjj-el disembunyikan */
+    body.pjj-off .pjj-el { display: none !important; }
+    /* Kebalikannya: elemen pjj-off-el hanya tampil saat Status PJJ dimatikan */
+    body:not(.pjj-off) .pjj-off-el { display: none !important; }
+
+    /* ---------- Header sticky responsif ---------- */
+    .app-header { position: sticky; top: 0; z-index: 40; background: var(--primary-900); color: #fff; box-shadow: inset 0 -2px 0 var(--secondary-500); }
+    .app-header-inner { max-width: 80rem; margin: 0 auto; min-height: var(--header-h); padding: .5rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+    .brand-mark { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; flex: none; background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .16); overflow: hidden; }
+    .brand-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-display); font-weight: 800; font-size: 1.05rem; letter-spacing: .02em; line-height: 1.1; color: var(--secondary-400); }
+    .brand-sub { font-size: .6875rem; color: var(--primary-200); line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .brand-school-badge { font-size: .625rem; background: rgb(255 255 255 / .08); color: var(--primary-100); padding: .1rem .5rem; border-radius: 6px; font-weight: 600; border: 1px solid rgb(255 255 255 / .14); }
+    @media (max-width: 480px) { .brand-school-badge { display: none; } }
+    .user-chip { display: flex; align-items: center; gap: .5rem; padding: .3rem .3rem; border-radius: 9999px; background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .14); }
+    .user-avatar { width: 30px; height: 30px; border-radius: 9999px; display: grid; place-items: center; flex: none; background: var(--secondary-400); color: var(--primary-900); font-weight: 800; font-size: .8rem; }
+    .chip-logout { padding: .4rem .7rem; border-radius: 9999px; background: rgb(255 255 255 / .1); color: #fff; font-size: .72rem; font-weight: 700; }
+    .chip-logout:hover { background: rgb(255 255 255 / .2); }
+
+    /* ---------- Kartu login split desktop/HP ---------- */
+    .login-card { display: grid; grid-template-columns: minmax(0, 1fr); background: #fff; border: 1px solid var(--slate-200); border-radius: 24px; overflow: hidden; box-shadow: 0 1px 2px rgb(20 27 46 / .04), 0 24px 48px -24px rgb(20 27 46 / .18); }
+    .login-aside { position: relative; overflow: hidden; background: var(--primary-800); color: #fff; padding: 1.5rem; }
+    .login-aside-text { display: none; margin-top: .75rem; font-size: .875rem; line-height: 1.6; color: var(--primary-200); max-width: 19rem; }
+    .login-aside-title { font-family: var(--font-display); font-weight: 700; font-size: 1.4rem; line-height: 1.2; margin-top: .9rem; letter-spacing: -.02em; }
+    .login-aside-illust { display: none; }
+    .login-form { padding: 1.5rem 1.25rem 1.75rem; }
+    @media (min-width: 768px) {
+      .login-card { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); }
+      .login-aside { padding: 2.5rem; min-height: 32rem; display: flex; flex-direction: column; }
+      .login-aside-title { font-size: 2rem; margin-top: 2rem; }
+      .login-aside-text { display: block; }
+      .login-aside-illust { display: block; margin-top: auto; }
+      .login-form { padding: 3rem 2.75rem; display: flex; flex-direction: column; justify-content: center; }
+    }
+    .field { position: relative; }
+    .field-label { display: block; margin-bottom: .4rem; font-size: .8125rem; font-weight: 600; color: var(--slate-700); }
+    .field-icon { position: absolute; left: .95rem; top: 50%; margin-top: -.5em; color: var(--slate-400); font-size: .85rem; pointer-events: none; }
+    .field:focus-within .field-icon { color: var(--primary-600); }
+    .field-input { width: 100%; height: 46px; padding: 0 2.7rem; border: 1px solid var(--slate-300); border-radius: 12px; background: #fff; font-size: .9375rem; color: var(--slate-900); }
+    .login-btn { width: 100%; height: 48px; border-radius: 12px; background: var(--primary-700); color: #fff; font-weight: 700; font-size: .9375rem; }
+    .login-btn:hover { background: var(--primary-800); }
+    @media (max-width: 640px) { #loginForm input { font-size: 16px; } }
+
+    /* ---------- Tab (kotak-kotak terpisah) — dipakai di semua menu tab ---------- */
+    .tab-bar { --p: var(--primary-700); --bg: var(--slate-50); --pt: var(--slate-900);
+      display: flex; gap: 8px; padding: 3px 3px 12px; background: transparent; border-radius: 0; overflow-x: auto; scrollbar-width: none; width: 100%; min-width: 0; box-sizing: border-box; }
+    .tab-bar::-webkit-scrollbar { display: none; }
+    /* Tiap tab = satu kotak sendiri: latar putih, garis tepi, sudut sedikit membulat */
+    .tab-btn { flex: none; padding: .55rem .9rem; border-radius: 10px; font-size: .78rem; font-weight: 600; color: var(--slate-500); white-space: nowrap; cursor: pointer;
+      background: #fff; border: 1.5px solid var(--slate-200); box-shadow: 0 1px 2px rgb(20 27 46 / .06);
+      transition: background .15s, color .15s, box-shadow .15s, border-color .15s; }
+    /* Kotak biasa saat disentuh kursor: garis tepi & teks mengikuti warna utama tema */
+    .tab-btn:hover:not(.tab-btn-active) { background: var(--bg); color: var(--p); border-color: var(--p); }
+    /* Kotak aktif: terisi warna utama situs, teks putih & tebal, bayangan lembut sewarna */
+    .tab-btn-active, .tab-btn-active:hover { background: var(--p); border-color: var(--p); color: #fff; font-weight: 700; box-shadow: 0 8px 16px -8px var(--p); }
+    .tab-btn:focus-visible { outline: 2px solid var(--p); outline-offset: 2px; }
+    /* Tanpa animasi geser / garis bawah / riak (ripple) */
+    body .tab-btn:not(:disabled):active { transform: none; }
+    @media (prefers-reduced-motion: reduce) { .tab-btn { transition: none !important; } }
+
+    /* Di layar HP: tab tersusun rapi dalam beberapa baris (tidak perlu geser horizontal) */
+    @media (max-width: 640px) {
+      .tab-bar { flex-wrap: wrap; overflow-x: visible; justify-content: flex-start; }
+      .tab-btn { flex: 1 1 auto; min-width: max-content; text-align: center; justify-content: center; }
+    }
+    /* Baris header yang membungkus tab-bar: turun ke bawah judul & selebar penuh di HP */
+    .tab-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; width: 100%; min-width: 0; }
+    @media (min-width: 641px) { .tab-bar-row { width: auto; } }
+
+    tr.clickable-row { cursor: pointer; transition: background-color 0.15s ease; }
+    tr.selected-row, tr.selected-row td { background-color: var(--primary-100) !important; color: var(--primary-900) !important; }
+    tr.selected-row { outline: 2px solid var(--primary-600) !important; position: relative; z-index: 10; }
+    tr.selected-row span { color: var(--primary-900) !important; font-weight: 900 !important; }
+
+    #matrixTableBody td, #matrixTableHead th, #kepsekTableHead th, #kepsekRecordsTableBody td { white-space: normal !important; word-break: break-word; }
+    .date-col { width: 24px !important; min-width: 24px !important; max-width: 24px !important; padding-left: 2px !important; padding-right: 2px !important; font-size: 10px !important; }
+
+    #matrixTableHead th, #kepsekTableHead th {
+      position: sticky !important; top: 0 !important; z-index: 20 !important;
+      background-color: var(--slate-100) !important; box-shadow: inset 0 -1px 0 var(--slate-300);
+    }
+    body table thead th { font-weight: 700; letter-spacing: .01em; }
+
+    /* ---------- Siswa: penuh selebar layar di ponsel, kartu di desktop ---------- */
+    @media (max-width: 640px) {
+      #studentDashboard { width: calc(100% + 1.5rem); max-width: none; margin-left: -.75rem; margin-right: -.75rem;
+        padding-left: .875rem; padding-right: .875rem; border-radius: 0; border-left-width: 0; border-right-width: 0; }
+    }
+
+    @media print { header, button, input, select, .no-print, #loginSection { display: none !important; } }
+    /* REVISI 92: loading bar ringan (bar tipis di atas + pil status di bawah) */
+    #loadBar { position:fixed; top:0; left:0; right:0; height:4px; z-index:2100; opacity:0; pointer-events:none; transition:opacity .25s; background:rgb(var(--primary-500-rgb) / .12); }
+    #loadBar.on { opacity:1; }
+    #loadBarFill { height:100%; width:0; background:linear-gradient(90deg,var(--secondary-400),var(--primary-600)); transition:width .3s ease, background-color .2s; border-radius:0 3px 3px 0; }
+    #loadBar.err #loadBarFill { background:#dc2626; }
+    #loadBar.snap #loadBarFill { transition:none; }
+    #loadStatus { position:fixed; left:50%; bottom:calc(16px + env(safe-area-inset-bottom, 0px)); transform:translateX(-50%); z-index:2100; display:flex; align-items:center; gap:8px; max-width:calc(100vw - 24px);
+      background:var(--primary-900); color:#fff; font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:999px; box-shadow:0 4px 14px rgb(15 28 55 / .28); pointer-events:none; }
+    #loadStatus.lb-hide, #loadSpin.lb-hide { display:none !important; }
+    #loadStatus.err { background:#b91c1c; }
+    #loadStatusText { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .lb-spin { width:14px; height:14px; flex:none; border:2px solid currentColor; border-right-color:transparent; border-radius:50%; animation:lb-rot .7s linear infinite; }
+    @keyframes lb-rot { to { transform:rotate(360deg); } }
+    @media (prefers-reduced-motion:reduce) { #loadBar, #loadBarFill { transition:none !important; } .lb-spin { animation:none !important; } }
+    /* ---------- Lencana status koneksi (Revisi 97) ---------- */
+    .net-badge { display: inline-flex; align-items: center; gap: .35rem; padding: .3rem .6rem; border-radius: 9999px; background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .14); color: #fff; font-size: .68rem; font-weight: 700; line-height: 1; cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s; }
+    .net-dot { width: 8px; height: 8px; border-radius: 9999px; flex: none; background: #34d399; }
+    .net-badge.net-slow .net-dot, .net-badge.net-busy .net-dot { background: #fbbf24; }
+    .net-badge.net-offline .net-dot { background: #f87171; }
+    .net-badge.net-slow, .net-badge.net-busy { background: rgb(251 191 36 / .16); border-color: rgb(251 191 36 / .5); }
+    .net-badge.net-offline { background: rgb(248 113 113 / .18); border-color: rgb(248 113 113 / .55); }
+    @media (max-width: 480px) { .net-badge.net-ok .net-text { display: none; } .net-badge.net-ok { padding: .45rem; } }
+    @media (prefers-reduced-motion: reduce) { .net-badge { transition: none; } }
+  </style>
+<style id="spDialogStyle">
+.sp-dlg-back{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;background:rgba(15,23,42,.55);opacity:0;transition:opacity .15s ease;font-family:inherit}
+.sp-dlg-back.show{opacity:1}
+.sp-dlg{width:100%;max-width:360px;max-height:86vh;overflow:auto;background:#fff;border-radius:18px;padding:22px 20px 18px;box-shadow:0 20px 50px rgba(15,23,42,.35);text-align:center;transform:translateY(8px) scale(.97);transition:transform .15s ease}
+.sp-dlg-back.show .sp-dlg{transform:none}
+.sp-dlg-ico{width:52px;height:52px;border-radius:50%;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;line-height:1}
+.sp-dlg-ico.success{background:#d1fae5;color:#059669}.sp-dlg-ico.error{background:#ffe4e6;color:#e11d48}
+.sp-dlg-ico.warning{background:#fef3c7;color:#d97706}.sp-dlg-ico.info{background:#dbeafe;color:#2563eb}
+.sp-dlg-title{margin:0 0 6px;font-size:16px;font-weight:800;color:#0f172a}
+.sp-dlg-msg{margin:0 0 16px;font-size:13.5px;line-height:1.5;color:#475569;white-space:pre-line;word-break:break-word;text-align:left}
+.sp-dlg-msg.center{text-align:center}
+.sp-dlg-in{width:100%;box-sizing:border-box;margin:0 0 16px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;font-size:14px;outline:none}
+.sp-dlg-in:focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+.sp-dlg-row{display:flex;gap:10px}
+.sp-dlg-btn{flex:1;border:0;border-radius:11px;padding:11px 14px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+.sp-dlg-btn.ok{background:#2563eb;color:#fff}.sp-dlg-btn.ok.danger{background:#e11d48}
+.sp-dlg-btn.ok.success{background:#059669}
+.sp-dlg-btn.cancel{background:#e2e8f0;color:#334155}
+.sp-dlg-btn:focus-visible{outline:3px solid rgba(37,99,235,.4);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.sp-dlg-back,.sp-dlg{transition:none}}
+</style>
+<script id="spDialogScript">
+/* ===== KOTAK PESAN BUATAN SENDIRI (pengganti alert/confirm/prompt bawaan browser) =====
+   Tampil rapi di tengah layar, tanpa alamat situs dan tanpa kotak centang "Jangan izinkan... menanyakan lagi"
+   (yang bila tercentang membuat semua peringatan penting diblokir browser tanpa suara). */
+(function () {
+  var queue = [], showing = false, lastMsg = '', lastAt = 0;
+
+  function kindOf(msg) {
+    var t = String(msg).toLowerCase();
+    if (/gagal|error|ditolak|salah|kendala|kedaluwarsa|dibatalkan|terlalu lama|diblokir|tidak (dapat|bisa|ditemukan|valid|sesuai|tersedia|didukung|disimpan|terkirim)/.test(t)) return 'error';
+    if (/berhasil|sukses/.test(t)) return 'success';
+    if (/silakan|wajib|harus|pastikan|belum|lengkapi|pilih |isi |hanya |perhatian/.test(t)) return 'warning';
+    return 'info';
   }
-}
+  var TITLES = { success: 'Berhasil', error: 'Gagal', warning: 'Perhatian', info: 'Informasi' };
+  var ICONS = { success: '\u2713', error: '\u2715', warning: '!', info: 'i' };
 
-async function staleWhileRevalidate(req) {
-  const cache = await caches.open(CACHE_CDN);
-  const hit = await cache.match(req);
-  const update = (async () => {
-    let res;
-    try { res = await fetch(req.url, { mode: 'cors', credentials: 'omit' }); }   // respons non-opaque (hemat kuota)
-    catch (e) { res = await fetch(req); }
-    if (isCacheable(res)) cache.put(req, res.clone()).catch(() => {});
-    return res;
-  })();
-  if (hit) { update.catch(() => {}); return hit; }
-  return update;
-}
-
-self.addEventListener('fetch', event => {
-  const req = event.request;
-  if (req.method !== 'GET') return;
-  let url;
-  try { url = new URL(req.url); } catch (e) { return; }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') return;
-
-  if (url.origin === self.location.origin) {
-    if (url.pathname.endsWith('/sw.js')) return;   // jangan menyimpan SW itu sendiri
-    event.respondWith(networkFirst(req));
-    return;
+  function mk(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
   }
-  if (CDN_HOSTS.indexOf(url.hostname) >= 0) {
-    event.respondWith(staleWhileRevalidate(req));
-    return;
+
+  function next() {
+    if (showing || !queue.length) return;
+    showing = true;
+    var it = queue.shift();
+    var kind = it.kind === 'alert' ? kindOf(it.msg) : (it.opt.danger ? 'error' : (it.kind === 'prompt' ? 'warning' : 'info'));
+    if (it.kind === 'confirm' && !it.opt.danger) kind = 'warning';
+
+    var back = mk('div', 'sp-dlg-back');
+    var box = mk('div', 'sp-dlg');
+    box.setAttribute('role', it.kind === 'alert' ? 'alertdialog' : 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.appendChild(mk('div', 'sp-dlg-ico ' + kind, ICONS[kind]));
+    var title = it.opt.title || (it.kind === 'alert' ? TITLES[kind] : (it.opt.danger ? 'Konfirmasi Penghapusan' : 'Konfirmasi'));
+    box.appendChild(mk('p', 'sp-dlg-title', title));
+    var multi = String(it.msg).length > 70 || String(it.msg).indexOf('\n') !== -1;
+    box.appendChild(mk('p', 'sp-dlg-msg' + (multi ? '' : ' center'), it.msg));
+
+    var input = null;
+    if (it.kind === 'prompt') {
+      input = mk('input', 'sp-dlg-in');
+      input.type = 'text'; input.autocomplete = 'off'; input.autocapitalize = 'off'; input.spellcheck = false;
+      box.appendChild(input);
+    }
+    var row = mk('div', 'sp-dlg-row');
+    var okCls = 'sp-dlg-btn ok' + (it.opt.danger ? ' danger' : (it.kind === 'alert' && kind === 'success' ? ' success' : ''));
+    var ok = mk('button', okCls, it.opt.okText || (it.kind === 'alert' ? 'OK' : (it.opt.danger && it.kind === 'confirm' ? 'Ya, Hapus' : 'Lanjutkan')));
+    ok.type = 'button';
+    var cancel = null;
+    if (it.kind !== 'alert') { cancel = mk('button', 'sp-dlg-btn cancel', it.opt.cancelText || 'Batal'); cancel.type = 'button'; row.appendChild(cancel); }
+    row.appendChild(ok);
+    box.appendChild(row);
+    back.appendChild(box);
+
+    function close(result) {
+      document.removeEventListener('keydown', onKey, true);
+      back.classList.remove('show');
+      setTimeout(function () {
+        if (back.parentNode) back.parentNode.removeChild(back);
+        showing = false;
+        if (it.res) it.res(result);
+        next();
+      }, 140);
+    }
+    function accept() { close(it.kind === 'prompt' ? input.value : true); }
+    function dismiss() { close(it.kind === 'prompt' ? null : false); }
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); dismiss(); }
+      else if (e.key === 'Enter' && !(e.target && e.target.tagName === 'BUTTON' && e.target === cancel)) { e.preventDefault(); e.stopPropagation(); accept(); }
+    }
+    ok.addEventListener('click', accept);
+    if (cancel) cancel.addEventListener('click', dismiss);
+    if (it.kind === 'alert') back.addEventListener('click', function (e) { if (e.target === back) accept(); });
+    document.addEventListener('keydown', onKey, true);
+
+    document.body.appendChild(back);
+    requestAnimationFrame(function () { back.classList.add('show'); });
+    // Aksi berbahaya: fokus awal ke Batal agar tidak terhapus karena Enter tak sengaja.
+    setTimeout(function () { (input || (it.opt.danger && cancel) || ok).focus(); }, 30);
   }
-  // selain itu (script.google.com, drive, dll.) -> langsung ke jaringan, tidak pernah disimpan
-});
+
+  function enqueue(it) { queue.push(it); next(); }
+
+  window.alert = function (msg) {
+    var m = (msg === undefined || msg === null) ? '' : String(msg);
+    var now = Date.now();
+    if (m === lastMsg && now - lastAt < 800) return;   // pesan identik beruntun (mis. tombol ditekan 2x) tidak ditumpuk
+    lastMsg = m; lastAt = now;
+    enqueue({ kind: 'alert', msg: m, opt: {} });
+  };
+  window.askConfirm = function (msg, opt) {
+    opt = opt || {};
+    if (opt.danger === undefined) opt.danger = /hapus|dihapus|permanen/i.test(String(msg));
+    return new Promise(function (res) { enqueue({ kind: 'confirm', msg: String(msg), opt: opt, res: res }); });
+  };
+  window.askPrompt = function (msg, opt) {
+    opt = opt || {};
+    if (opt.danger === undefined) opt.danger = /hapus|dihapus|permanen/i.test(String(msg));
+    return new Promise(function (res) { enqueue({ kind: 'prompt', msg: String(msg), opt: opt, res: res }); });
+  };
+})();
+</script>
+
+
+  <!-- ===== CACHE PERANGKAT: Service Worker (Revisi 96) =====
+       Menyimpan "kerangka" aplikasi (halaman, font, pustaka CDN) agar buka lebih cepat & tetap terbuka saat sinyal buruk.
+       Panggilan ke server Apps Script TIDAK pernah disimpan. File sw.js harus satu folder dengan halaman ini. -->
+  <script>
+    (function () {
+      if (!('serviceWorker' in navigator)) return;
+      if (!/^https?:$/.test(location.protocol)) return;
+      if (/googleusercontent\.com$|script\.google\.com$/.test(location.hostname)) return;   // dibuka dari dalam Apps Script
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () { /* tanpa SW aplikasi tetap berjalan normal */ });
+      });
+    })();
+  </script>
+</head>
+<body class="pjj-off bg-slate-50 text-slate-800 min-h-screen">
+
+  <!-- =====================================================================
+       PENDETEKSI "IN-APP BROWSER" (WhatsApp/Instagram/Facebook/Line/TikTok, dll)
+       Browser tumpangan di dalam aplikasi chat sering membatasi akses kamera
+       & GPS, sehingga presensi gagal tanpa pesan error yang jelas ke siswa.
+       - Android: dicoba auto-redirect ke browser default HP (intent://).
+       - iOS: Apple tidak mengizinkan redirect otomatis semacam ini, jadi
+         cukup ditampilkan instruksi manual singkat.
+       Ini murni BANTUAN, bukan pengunci — kalau deteksi meleset, siswa tetap
+       bisa lanjut memakai halaman seperti biasa.
+       ===================================================================== -->
+  <div id="inAppBrowserBanner" class="hidden fixed top-0 left-0 right-0 z-[60] bg-secondary-500 text-primary-900 px-3 py-2.5 shadow-lg text-xs sm:text-sm">
+    <div class="max-w-3xl mx-auto flex items-start gap-2">
+      <i class="fas fa-triangle-exclamation mt-0.5 flex-none"></i>
+      <div class="flex-1 min-w-0">
+        <p id="inAppBrowserBannerText" class="font-semibold leading-snug"></p>
+        <button id="inAppBrowserBannerBtn" onclick="openInExternalBrowser()" class="hidden mt-2 bg-primary-800 hover:bg-primary-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg">
+          <i class="fas fa-up-right-from-square mr-1"></i>Buka di Browser
+        </button>
+      </div>
+      <button onclick="document.getElementById('inAppBrowserBanner').classList.add('hidden')" class="flex-none text-primary-900/70 hover:text-primary-900 px-1" aria-label="Tutup">
+        <i class="fas fa-xmark"></i>
+      </button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var ua = navigator.userAgent || '';
+      var isAndroid = /Android/i.test(ua);
+      var isIOS = /iPhone|iPad|iPod/i.test(ua);
+      // Aplikasi chat/media sosial yang diketahui menyisipkan browser tumpangan (WebView)
+      var knownAppMarkers = /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|TikTok|Snapchat|WhatsApp/i.test(ua);
+      // Android generik: token "; wv)" menandakan halaman dibuka lewat komponen WebView, bukan Chrome/Firefox asli
+      var androidWebView = isAndroid && /; ?wv\)/i.test(ua);
+      // iOS: Safari asli & Chrome/Firefox/Edge iOS selalu punya token khas ini — kalau tidak ada salah satunya
+      // padahal terdeteksi "Safari" di UA, besar kemungkinan itu browser tumpangan aplikasi lain
+      var iosLikelyInApp = isIOS && /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|Version\//i.test(ua);
+      var suspected = knownAppMarkers || androidWebView || iosLikelyInApp;
+
+      if (!suspected) return;
+
+      window.__inAppBrowserSuspected = true;
+      window.__inAppBrowserIsAndroid = isAndroid;
+
+      var banner = document.getElementById('inAppBrowserBanner');
+      var text = document.getElementById('inAppBrowserBannerText');
+      var btn = document.getElementById('inAppBrowserBannerBtn');
+
+      if (isAndroid) {
+        text.textContent = 'Anda membuka halaman ini di dalam aplikasi chat/media sosial. Kamera & GPS mungkin tidak berfungsi di sini — ketuk tombol di bawah untuk membuka di browser normal (Chrome/Firefox/dll HP Anda).';
+        btn.classList.remove('hidden');
+        // Coba langsung membuka otomatis di browser default (sekali saja saat halaman dimuat)
+        try {
+          var target = window.location.href;
+          var bare = target.replace(/^https?:\/\//i, '');
+          window.location.href = 'intent://' + bare + '#Intent;scheme=https;action=android.intent.action.VIEW;end';
+        } catch (e) { /* abaikan; siswa masih bisa pakai tombol manual */ }
+      } else if (isIOS) {
+        text.textContent = 'Anda membuka halaman ini di dalam aplikasi chat/media sosial. Agar kamera & GPS berfungsi: ketuk ikon ••• atau ikon share di pojok layar, lalu pilih "Buka di Safari".';
+      }
+
+      banner.classList.remove('hidden');
+    })();
+
+    function openInExternalBrowser() {
+      var target = window.location.href;
+      var bare = target.replace(/^https?:\/\//i, '');
+      window.location.href = 'intent://' + bare + '#Intent;scheme=https;action=android.intent.action.VIEW;end';
+    }
+  </script>
+
+  <!-- REVISI 92: loading bar ringan (diambil dari aplikasi E-Learning rev. 18) -->
+  <div id="loadBar" role="progressbar" aria-label="Memuat" aria-valuemin="0" aria-valuemax="100" aria-hidden="true"><div id="loadBarFill"></div></div>
+  <div id="loadStatus" class="lb-hide" role="status" aria-live="polite"><span class="lb-spin" id="loadSpin"></span><span id="loadStatusText"></span></div>
+
+  <header class="app-header">
+    <div class="app-header-inner">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="brand-mark">
+          <img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgIpJW9I9kygFde0tcluF66frz5cxRzG2O59ttSwz4mLYS9no7BCAYi6TzAPibwGbvssvgs_MDLoMfKQ0OnOjCeWh_uz4nRDRoGy1_wtZz7hZnlGrbHjbIy6V4JYq3jBKlb5k5Lm8e4u2Gu4ByBOZ66-RMTt55T6DK982YlgdF_eZHMfsooK6AA7Vwt13vu/s320/Logo.png"
+               alt="Logo SMK Nusantara" class="w-full h-full object-contain" onerror="this.src='https://placehold.co/40x40/0f1c37/e6b03c?text=SMK'">
+        </div>
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <h1 class="brand-name">SMART-PRESENSI</h1>
+            <span class="brand-school-badge">SMK SWASTA NUSANTARA LUBUK PAKAM</span>
+          </div>
+          <p class="brand-sub">PREsensi SENtral Sistem Integrasi</p>
+        </div>
+      </div>
+      <div id="userInfo" class="hidden flex items-center gap-2">
+        <button type="button" id="netBadge" class="net-badge net-ok" role="status" aria-live="polite" title="Status koneksi" onclick="NetStatus.check(true)"><i class="net-dot"></i><span class="net-text">Lancar</span></button>
+        <div class="user-chip">
+          <div class="user-avatar" id="userAvatarInitial">-</div>
+          <div class="text-right text-xs pr-1 hidden sm:block">
+            <span id="userNameDisplay" class="font-bold block text-sm leading-tight text-white"></span>
+            <span id="userRoleBadge" class="text-[10px] text-primary-200 font-semibold"></span>
+          </div>
+        </div>
+        <button onclick="logout()" class="chip-logout flex items-center gap-1">
+          <i class="fas fa-sign-out-alt"></i><span class="hidden sm:inline">Keluar</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Login Section -->
+    <div id="loginSection" class="max-w-4xl mx-auto my-6 md:my-8">
+      <div class="login-card">
+        <div class="login-aside">
+          <div class="w-11 h-11 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-xl text-secondary-300">
+            <i class="fas fa-clipboard-check"></i>
+          </div>
+          <h2 class="login-aside-title">Presensi sekolah,<br>tercatat rapi &amp; real-time.</h2>
+          <p class="login-aside-text">Presensi mandiri dengan foto selfie &amp; validasi GPS, rekap otomatis per kelas, dan laporan kehadiran sekolah dalam satu sistem — SMK Swasta Nusantara Lubuk Pakam.</p>
+          <div class="login-aside-illust">
+            <svg viewBox="0 0 320 140" class="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
+              <rect x="14" y="18" width="150" height="104" rx="12" fill="none" stroke="rgb(255 255 255 / .2)" stroke-width="1.5"/>
+              <circle cx="49" cy="46" r="10" fill="var(--secondary-400)"/>
+              <rect x="66" y="41" width="80" height="6" rx="3" fill="rgb(255 255 255 / .45)"/>
+              <rect x="66" y="52" width="50" height="5" rx="2.5" fill="rgb(255 255 255 / .3)"/>
+              <rect x="28" y="72" width="122" height="8" rx="4" fill="rgb(255 255 255 / .12)"/>
+              <rect x="28" y="72" width="86" height="8" rx="4" fill="var(--secondary-400)"/>
+              <rect x="28" y="90" width="122" height="8" rx="4" fill="rgb(255 255 255 / .12)"/>
+              <rect x="28" y="90" width="60" height="8" rx="4" fill="rgb(255 255 255 / .55)"/>
+              <rect x="28" y="108" width="122" height="8" rx="4" fill="rgb(255 255 255 / .12)"/>
+              <rect x="28" y="108" width="40" height="8" rx="4" fill="rgb(255 255 255 / .3)"/>
+              <g transform="translate(186,10)">
+                <rect x="0" y="0" width="120" height="120" rx="16" fill="rgb(255 255 255 / .06)" stroke="rgb(255 255 255 / .18)"/>
+                <circle cx="60" cy="46" r="22" fill="none" stroke="var(--secondary-400)" stroke-width="4"/>
+                <path d="M28 100c4-20 20-30 32-30s28 10 32 30" fill="none" stroke="rgb(255 255 255 / .4)" stroke-width="4" stroke-linecap="round"/>
+                <circle cx="94" cy="20" r="12" fill="var(--secondary-400)"/>
+                <path d="M89 20l3.5 3.5L100 15.5" fill="none" stroke="var(--primary-900)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+              </g>
+            </svg>
+          </div>
+        </div>
+        <div class="login-form">
+          <div class="mb-6">
+            <h2 class="font-display text-xl md:text-2xl font-bold text-slate-900">Masuk ke SMART-PRESENSI</h2>
+            <p class="text-xs text-slate-500 mt-1">Gunakan akun yang diberikan sekolah, atau NISN untuk siswa.</p>
+          </div>
+
+          <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-4">
+            <div class="field">
+              <label class="field-label">Username / NISN</label>
+              <i class="fas fa-user field-icon"></i>
+              <input type="text" id="loginUsername" required class="field-input" placeholder="Contoh: admin / nisn siswa">
+            </div>
+            <div class="field">
+              <label class="field-label">Password</label>
+              <i class="fas fa-lock field-icon"></i>
+              <input type="password" id="loginPassword" required class="field-input" placeholder="••••••••">
+              <button type="button" onclick="const p=document.getElementById('loginPassword'); p.type = p.type==='password' ? 'text' : 'password'; this.querySelector('i').classList.toggle('fa-eye'); this.querySelector('i').classList.toggle('fa-eye-slash');" class="field-toggle absolute right-1.5 top-1/2 -translate-y-1/2 w-9 h-9 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center">
+                <i class="fas fa-eye"></i>
+              </button>
+            </div>
+            <button type="submit" class="login-btn mt-2">
+              <span>Masuk Sistem</span>
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Student Dashboard -->
+    <div id="studentDashboard" class="hidden max-w-xl mx-auto bg-white rounded-2xl shadow-xl p-6 border space-y-6">
+      <div class="border-b pb-4">
+        <h2 class="text-xl font-bold text-slate-850"><i class="fas fa-camera-retro text-primary-600 mr-2"></i>Presensi Mandiri (Foto Selfie & GPS)</h2>
+        <p class="text-xs text-slate-500">Pilih status kehadiran, ambil foto selfie Anda, lalu kirim presensi beserta validasi GPS.</p>
+      </div>
+
+      <div id="studentStatusCard" class="hidden p-4 rounded-xl border flex items-center justify-between transition-all">
+        <div class="flex items-center space-x-3">
+          <div id="statusBadgeIcon" class="w-10 h-10 rounded-full flex items-center justify-center text-lg"></div>
+          <div>
+            <p class="text-xs font-bold text-slate-500 uppercase">Status Presensi Hari Ini</p>
+            <h4 id="statusBadgeTitle" class="text-sm font-extrabold"></h4>
+            <p id="statusBadgeDesc" class="text-[11px] text-slate-500 mt-0.5"></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Tanggal Presensi (Hari Ini):</label>
+          <input type="date" id="studentAttendanceDate" readonly class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-650 cursor-not-allowed pointer-events-none">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">Nama Siswa:</label>
+          <input type="text" id="studentNameDisplay" readonly class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-slate-100 text-slate-700">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">NISN:</label>
+          <input type="text" id="studentNisnDisplay" readonly class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-slate-100 text-primary-700">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-2">1. Pilih Status Kehadiran:</label>
+          <div id="studentStatusGrid" class="grid grid-cols-4 gap-1.5 text-center">
+            <label class="cursor-pointer bg-emerald-50 text-emerald-700 p-2 rounded-lg text-xs font-bold border border-emerald-200">
+              <input type="radio" name="studentStatusRadio" value="Hadir" checked onchange="onStudentStatusChange()" class="block mx-auto mb-1"> Hadir
+            </label>
+            <label class="cursor-pointer bg-purple-50 text-purple-700 p-2 rounded-lg text-xs font-bold border border-purple-200">
+              <input type="radio" name="studentStatusRadio" value="PKL" onchange="onStudentStatusChange()" class="block mx-auto mb-1"> PKL
+            </label>
+            <label class="cursor-pointer bg-blue-50 text-blue-700 p-2 rounded-lg text-xs font-bold border border-blue-200">
+              <input type="radio" name="studentStatusRadio" value="Izin" onchange="onStudentStatusChange()" class="block mx-auto mb-1"> Izin
+            </label>
+            <label class="cursor-pointer bg-secondary-50 text-secondary-700 p-2 rounded-lg text-xs font-bold border border-secondary-200">
+              <input type="radio" name="studentStatusRadio" value="Sakit" onchange="onStudentStatusChange()" class="block mx-auto mb-1"> Sakit
+            </label>
+            <label class="pjj-el cursor-pointer bg-teal-50 text-teal-700 p-2 rounded-lg text-xs font-bold border border-teal-200">
+              <input type="radio" name="studentStatusRadio" value="PJJ" onchange="onStudentStatusChange()" class="block mx-auto mb-1"> PJJ
+            </label>
+          </div>
+        </div>
+
+        <div id="stepSelfie" class="bg-slate-50 p-4 rounded-xl border space-y-3">
+          <label class="block text-xs font-bold text-slate-700"><i class="fas fa-camera mr-1 text-primary-600"></i> <span class="stepNum">2</span>. <span id="selfieStepTitle">Ambil Foto Selfie Kehadiran:</span></label>
+          <p id="selfieRearHint" class="hidden text-[11px] font-semibold text-rose-600 text-justify">Wajib: foto bukti (surat/bukti/kondisi Anda) langsung dari kamera, bukan dari galeri. Kamera belakang terbuka lebih dulu; tekan "Balik Kamera" untuk kamera depan.</p>
+          
+          <div class="relative w-full h-48 bg-slate-200 rounded-lg overflow-hidden flex flex-col items-center justify-center border border-dashed border-slate-300">
+            <div id="cameraPlaceholder" class="text-center p-4">
+              <i class="fas fa-user-circle text-4xl text-slate-400 mb-2"></i>
+              <p class="text-xs text-slate-500 font-medium">Belum ada foto selfie yang diambil</p>
+            </div>
+            <img id="selfiePreview" class="hidden w-full h-full object-cover absolute inset-0">
+          </div>
+
+          <button type="button" onclick="startSelfie()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center space-x-2">
+            <i class="fas fa-camera text-sm"></i>
+            <span id="btnSelfieLabel">Buka Kamera / Ambil Foto Selfie</span>
+          </button>
+          <input type="file" id="cameraFileInput" accept="image/*" capture="user" onchange="handleCameraFileSelect(event)" class="hidden">
+          <input type="file" id="cameraFileInputRear" accept="image/*" capture="environment" onchange="handleCameraFileSelect(event)" class="hidden">
+        </div>
+
+        <div id="stepKeterangan" class="hidden bg-slate-50 p-4 rounded-xl border space-y-2">
+          <label class="block text-xs font-bold text-slate-700"><i class="fas fa-pen mr-1 text-primary-600"></i> <span class="stepNum">3</span>. Keterangan: <span class="text-rose-600">(Wajib diisi)</span></label>
+          <textarea id="studentKeterangan" rows="3" maxlength="200" placeholder="Contoh: Demam dan diperiksa dokter / Ada acara keluarga / PKL di PT. ..." class="w-full border px-3 py-2 rounded-lg text-xs bg-white focus:ring-2 focus:ring-primary-500"></textarea>
+          <p class="text-[11px] text-slate-500 text-justify">Status PKL, Izin, <span class="pjj-el">Sakit, dan PJJ</span><span class="pjj-off-el">dan Sakit</span> tidak memerlukan scan barcode & GPS, tetapi wajib foto kamera belakang dan keterangan. Presensi akan diverifikasi oleh wali kelas.<span id="ketLokasiHint" class="hidden font-semibold text-primary-700"> Lokasi (GPS) Anda juga akan direkam saat presensi dikirim, jadi aktifkan GPS dan izinkan akses lokasi.</span></p>
+        </div>
+
+        <div id="stepBarcode" class="hidden bg-slate-50 p-4 rounded-xl border space-y-3">
+          <label class="block text-xs font-bold text-slate-700"><i class="fas fa-qrcode mr-1 text-primary-600"></i> <span class="stepNum">3</span>. Scan Barcode Presensi: <span class="text-rose-600">(Wajib)</span></label>
+          <div class="rounded-lg border border-slate-200 bg-white p-3 flex items-center gap-3">
+            <div id="barcodeStatusIcon" class="w-9 h-9 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center flex-none"><i class="fas fa-qrcode"></i></div>
+            <div class="flex-1 min-w-0">
+              <p id="barcodeStatusTitle" class="text-xs font-bold text-slate-700">Barcode belum discan</p>
+              <p id="barcodeStatusDesc" class="text-[11px] text-slate-500">Scan barcode presensi dari guru wali kelas atau layar barcode.</p>
+            </div>
+          </div>
+          <button type="button" onclick="openBarcodeScanner()" class="w-full bg-primary-50 hover:bg-primary-100 text-primary-700 border border-primary-200 px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2"><i class="fas fa-qrcode text-sm"></i><span>Scan Barcode</span></button>
+        </div>
+
+        <div id="rearCameraModal" class="hidden fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl p-4 w-full max-w-sm space-y-3">
+            <p class="text-xs font-bold text-slate-700"><i class="fas fa-camera mr-1 text-primary-600"></i>Arahkan kamera ke bukti/kondisi Anda, lalu tekan Ambil Foto (tombol Balik: depan/belakang)</p>
+            <video id="rearVideo" playsinline muted autoplay class="w-full rounded-lg bg-black aspect-[3/4] object-cover"></video>
+            <div class="grid grid-cols-3 gap-2">
+              <button type="button" onclick="closeRearCamera()" class="border px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700">Batal</button>
+              <button type="button" onclick="flipRearCamera()" class="border px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700"><i class="fas fa-rotate mr-1"></i>Balik</button>
+              <button type="button" onclick="captureRearPhoto()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold"><i class="fas fa-camera mr-1"></i>Ambil Foto</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="barcodeScanModal" class="hidden fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl p-4 w-full max-w-sm space-y-3">
+            <p class="text-xs font-bold text-slate-700">Arahkan kamera ke barcode di layar guru</p>
+            <video id="barcodeVideo" playsinline muted class="w-full rounded-lg bg-black aspect-square object-cover"></video>
+            <button type="button" onclick="closeBarcodeScanner()" class="w-full border px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700">Batal</button>
+          </div>
+        </div>
+
+        <div id="stepGps" class="bg-slate-50 p-4 rounded-xl border space-y-3">
+          <label class="block text-xs font-bold text-slate-700"><i class="fas fa-location-crosshairs mr-1 text-primary-600"></i> <span class="stepNum">4</span>. Cek Lokasi GPS: <span class="text-rose-600">(Wajib)</span></label>
+
+          <div id="gpsStatusBox" class="rounded-lg border border-slate-200 bg-white p-3 flex items-center gap-3">
+            <div id="gpsStatusIcon" class="w-9 h-9 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center flex-none">
+              <i class="fas fa-location-dot"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p id="gpsStatusTitle" class="text-xs font-bold text-slate-700">Lokasi belum dicek</p>
+              <p id="gpsStatusDesc" class="text-[11px] text-slate-500">Wajib: tekan tombol di bawah dan pastikan status GPS "OK" sebelum bisa mengirim presensi.</p>
+            </div>
+          </div>
+
+          <button type="button" id="btnRefreshGps" onclick="refreshGpsStatus()" class="w-full bg-primary-50 hover:bg-primary-100 text-primary-700 border border-primary-200 px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2">
+            <i class="fas fa-arrows-rotate text-sm"></i>
+            <span>Refresh GPS</span>
+          </button>
+        </div>
+
+        <button id="btnSubmitStudent" onclick="submitStudentAttendanceWithSelfie()" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-xl text-sm shadow-md transition">
+          <i class="fas fa-paper-plane mr-2"></i> Kirim Presensi
+        </button>
+      </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="adminDashboard" class="hidden space-y-6">
+      <div class="tab-bar">
+        <button id="adminTabUserBtn" onclick="switchAdminTab('users')" class="tab-btn tab-btn-active">
+          <i class="fas fa-users-cog mr-1.5"></i>Kelola Akun
+        </button>
+        <button id="adminTabGpsBtn" onclick="switchAdminTab('gps')" class="tab-btn">
+          <i class="fas fa-map-marked-alt mr-1.5"></i>Atur GPS & Radius
+        </button>
+        <button id="adminTabBrowserBtn" onclick="switchAdminTab('browser')" class="tab-btn">
+          <i class="fab fa-chrome mr-1.5"></i>Atur Browser & Folder
+        </button>
+        <button id="adminTabVerifikasiBtn" onclick="switchAdminTab('verifikasi')" class="tab-btn">
+          <i class="fas fa-check-double mr-1.5"></i>Verifikasi
+        </button>
+        <button id="adminTabTampilanBtn" onclick="switchAdminTab('tampilan')" class="tab-btn">
+          <i class="fas fa-palette mr-1.5"></i>Tampilan
+        </button>
+        <button id="adminTabResetBtn" onclick="switchAdminTab('reset')" class="tab-btn">
+          <i class="fas fa-trash-alt mr-1.5"></i>Bersihkan Log Presensi
+        </button>
+      </div>
+
+      <div id="adminTabUsers" class="space-y-6">
+        <div class="flex justify-between items-center bg-white p-5 rounded-xl shadow-sm border">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800">Kelola Akun Pengguna</h2>
+            <p class="text-xs text-slate-500">Manajemen akun Kepsek, Wakepsek, Guru Wali Kelas, Sekretaris Kelas, & Barcode</p>
+          </div>
+          <button onclick="openUserModal()" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-primary-700 transition">+ Tambah Akun</button>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-100 text-slate-700 uppercase text-xs font-bold border-b">
+              <tr>
+                <th class="p-4 w-16 text-center">No</th>
+                <th class="p-4">Nama</th>
+                <th class="p-4">Username &amp; Password</th>
+                <th class="p-4">Role</th>
+                <th class="p-4">Kelas & Jurusan</th>
+                <th class="p-4 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="userTableBody" class="divide-y text-slate-700"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="adminTabGps" class="hidden max-w-2xl bg-white rounded-2xl shadow-sm border p-6 space-y-6">
+        <div class="border-b pb-4">
+          <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-satellite-dish text-primary-600 mr-2"></i>Pengaturan Titik Pusat Sekolah, Radius & Proteksi GPS</h2>
+          <p class="text-xs text-slate-500 mt-1">Tentukan titik koordinat lokasi pusat sekolah, batas jarak radius toleransi, dan aktifkan sakelar proteksi Fake GPS.</p>
+        </div>
+
+        <!-- SAKELAR INTEGRASI DETEKSI FAKE GPS -->
+        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border mb-4">
+          <div>
+            <h4 class="text-sm font-bold text-slate-800">Aktifkan Proteksi Deteksi Fake GPS</h4>
+            <p class="text-xs text-slate-500 mt-0.5">Jika aktif, sistem akan mendeteksi dan memblokir siswa yang menggunakan aplikasi pemalsu lokasi / Mock Location.</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="toggleEnableFakeGpsCheck" onchange="updateFakeGpsSettings()" class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+          </label>
+        </div>
+
+        <!-- SAKELAR LOKASI SISWA DI TAB KETERANGAN (PKL / Izin / Sakit / PJJ) -->
+        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border mb-4">
+          <div class="pr-4">
+            <h4 class="text-sm font-bold text-slate-800">Tampilkan Kolom Lokasi Siswa di Tab Keterangan</h4>
+            <p class="text-xs text-slate-500 mt-0.5">Mengatur apakah kolom <b>Lokasi</b> (siswa berstatus Sakit, Izin, PKL, PJJ) ditampilkan di tab Keterangan panel Kepala Sekolah, Wakil Kepala Sekolah, dan Wali Kelas. Jika dimatikan, kolom hanya disembunyikan; lokasi siswa tetap tercatat di sheet database.</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer flex-none">
+            <input type="checkbox" id="toggleLokasiKeterangan" onchange="updateLokasiKeterangan()" class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+          </label>
+        </div>
+
+        <form onsubmit="saveAdminGpsConfig(event)" class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Latitude Sekolah:</label>
+              <input type="text" id="cfgSchoolLat" required placeholder="Contoh: 3.561349" class="w-full border px-3 py-2 rounded-lg text-xs font-mono font-semibold bg-white focus:ring-2 focus:ring-primary-500">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Longitude Sekolah:</label>
+              <input type="text" id="cfgSchoolLng" required placeholder="Contoh: 98.877914" class="w-full border px-3 py-2 rounded-lg text-xs font-mono font-semibold bg-white focus:ring-2 focus:ring-primary-500">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Radius Toleransi Maksimal (Meter):</label>
+            <div class="flex items-center space-x-2">
+              <input type="number" id="cfgSchoolRadius" min="10" max="5000" required placeholder="100" class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white text-primary-900 focus:ring-2 focus:ring-primary-500">
+              <span class="text-xs font-bold text-slate-500">Meter</span>
+            </div>
+          </div>
+          <div class="pt-3 flex flex-wrap gap-3">
+            <button type="button" onclick="detectAdminCurrentLocation()" class="bg-secondary-500 hover:bg-secondary-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-sm flex items-center space-x-1.5">
+              <i class="fas fa-crosshairs"></i><span>Gunakan Lokasi Saya Saat Ini</span>
+            </button>
+            <button type="submit" class="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-md flex items-center space-x-1.5">
+              <i class="fas fa-save"></i><span>Simpan Pengaturan GPS</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Admin Tab Browser -->
+      <div id="adminTabBrowser" class="hidden max-w-2xl bg-white rounded-2xl shadow-sm border p-6 space-y-6">
+        <div class="border-b pb-4">
+          <h2 class="text-lg font-bold text-slate-800"><i class="fab fa-chrome text-primary-600 mr-2"></i>Pengaturan Pembatasan Browser</h2>
+          <p class="text-xs text-slate-500 mt-1">Atur kebijakan browser yang diizinkan untuk siswa saat melakukan presensi mandiri.</p>
+        </div>
+        
+        <div class="space-y-4">
+          <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+            <div>
+              <h4 class="text-sm font-bold text-slate-800">Wajib Gunakan Google Chrome</h4>
+              <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa hanya bisa melakukan presensi jika mengakses aplikasi dari peramban Google Chrome.</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggleRequireChrome" onchange="updateBrowserSettings()" class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            </label>
+          </div>
+        </div>
+
+        <div class="border-t pt-6 space-y-4">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-folder-open text-primary-600 mr-2"></i>Folder Foto Bukti Presensi</h2>
+            <p class="text-xs text-slate-500 mt-1">Nama folder Google Drive tempat foto selfie presensi disimpan. Jika folder sudah ada di Drive, namanya akan diganti otomatis. Jika folder sudah terhapus, folder baru akan dibuat dengan nama yang Anda simpan.</p>
+          </div>
+          <div class="p-4 bg-slate-50 rounded-xl border space-y-3">
+            <label for="inputNamaFolderFoto" class="block text-xs font-semibold text-slate-600">Nama Folder</label>
+            <div class="flex gap-2">
+              <input type="text" id="inputNamaFolderFoto" maxlength="100" placeholder="Foto_Presensi_Siswa" class="flex-1 min-w-0 border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500">
+              <button id="btnSimpanFolderFoto" onclick="saveFotoFolderName()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition flex items-center space-x-1.5">
+                <i class="fas fa-save"></i><span>Simpan</span>
+              </button>
+            </div>
+            <p id="folderFotoStatus" class="text-xs text-slate-500"></p>
+          </div>
+        </div>
+
+        <div class="border-t pt-6 space-y-4">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-database text-primary-600 mr-2"></i>Backup Sheet Database</h2>
+            <p class="text-xs text-slate-500 mt-1">Salinan seluruh sheet database disimpan ke folder Google Drive pilihan Anda. Folder harus sudah dibagikan ke akun pemilik script dengan izin <b>Editor</b>. Karena salinan berisi seluruh data (termasuk akun pengguna), pastikan folder ini <b>hanya bisa diakses admin</b>.</p>
+          </div>
+          <div class="p-4 bg-slate-50 rounded-xl border space-y-3">
+            <label for="inputLinkFolderBackup" class="block text-xs font-semibold text-slate-600">Link Folder Google Drive</label>
+            <div class="flex gap-2">
+              <input type="url" id="inputLinkFolderBackup" placeholder="https://drive.google.com/drive/folders/..." class="flex-1 min-w-0 border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500">
+              <button id="btnSimpanFolderBackup" onclick="saveBackupFolder()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition flex items-center space-x-1.5">
+                <i class="fas fa-save"></i><span>Simpan</span>
+              </button>
+            </div>
+            <p id="folderBackupStatus" class="text-xs text-slate-500"></p>
+          </div>
+          <div class="p-4 bg-slate-50 rounded-xl border space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h4 class="text-sm font-bold text-slate-800">Backup Otomatis</h4>
+                <p class="text-xs text-slate-500 mt-0.5">Jika aktif, backup berjalan otomatis sesuai jadwal di bawah (bisa terlambat s.d. 15 menit).</p>
+                <p id="backupJadwalInfo" class="text-xs text-primary-700 font-semibold mt-1"></p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggleBackupOtomatis" onchange="updateBackupOtomatis()" class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            </label>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label for="selectBackupFrekuensi" class="block text-xs font-semibold text-slate-600 mb-1">Frekuensi</label>
+                <select id="selectBackupFrekuensi" onchange="sarankanBatasBackup()" class="w-full border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500">
+                  <option value="bulanan">Setiap akhir bulan</option>
+                  <option value="harian">Setiap hari</option>
+                </select>
+              </div>
+              <div>
+                <label for="inputBackupJam" class="block text-xs font-semibold text-slate-600 mb-1">Jam (WIB)</label>
+                <input type="time" id="inputBackupJam" value="23:00" class="w-full border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500">
+              </div>
+              <div>
+                <label for="inputBackupSimpan" class="block text-xs font-semibold text-slate-600 mb-1">Simpan backup otomatis terakhir</label>
+                <input type="number" id="inputBackupSimpan" min="0" max="60" value="0" class="w-full border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500">
+              </div>
+            </div>
+            <p class="text-xs text-slate-500">Batas simpan hanya berlaku untuk backup otomatis: yang lebih lama dari batas dipindah ke Sampah Drive. Isi <b>0</b> bila tidak ingin ada yang dihapus. Backup manual tidak pernah dihapus otomatis. Untuk &quot;akhir bulan&quot;, pilih jam paling lambat 23.30.</p>
+            <div class="flex justify-end">
+              <button id="btnSimpanJadwalBackup" onclick="simpanJadwalBackup()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition flex items-center space-x-1.5">
+                <i class="fas fa-save"></i><span>Simpan Jadwal</span>
+              </button>
+            </div>
+          </div>
+          <div class="p-4 bg-slate-50 rounded-xl border space-y-3">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h4 class="text-sm font-bold text-slate-800">Backup Manual</h4>
+                <p class="text-xs text-slate-500 mt-0.5">Buat salinan database sekarang juga.</p>
+              </div>
+              <button id="btnBackupManual" onclick="jalankanBackupManual()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition flex items-center space-x-1.5 whitespace-nowrap">
+                <i class="fas fa-cloud-arrow-up"></i><span>Backup Sekarang</span>
+              </button>
+            </div>
+            <p id="backupTerakhirInfo" class="text-xs text-slate-500"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Tab Verifikasi -->
+      <div id="adminTabVerifikasi" class="hidden max-w-2xl bg-white rounded-2xl shadow-sm border p-6 space-y-6">
+        <div class="border-b pb-4">
+          <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-check-double text-primary-600 mr-2"></i>Pengaturan Verifikasi Wali Kelas</h2>
+          <p class="text-xs text-slate-500 mt-1">Atur apakah tahapan verifikasi oleh wali kelas diaktifkan atau dinonaktifkan (bypass) untuk presensi mandiri siswa dan presensi sekretaris.</p>
+        </div>
+        <div class="space-y-4">
+          <div><h3 class="text-sm font-bold text-slate-800">Langkah Presensi Mandiri Siswa</h3>
+          <p class="text-xs text-slate-500 mt-0.5">Langkah yang dimatikan tidak akan muncul di laman presensi siswa.</p></div>
+          <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+            <div>
+              <h4 class="text-sm font-bold text-slate-800">Foto Selfie</h4>
+              <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa wajib mengambil foto selfie sebelum mengirim presensi.</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggleFiturSelfie" onchange="updateFiturPresensi()" class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            </label>
+          </div>
+          <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+            <div>
+              <h4 class="text-sm font-bold text-slate-800">Scan Barcode</h4>
+              <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa wajib scan barcode dari guru wali kelas (dinamis, berganti tiap 60 menit) atau akun Barcode (dinamis, berganti tiap 30 detik).</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggleFiturBarcode" onchange="updateFiturPresensi()" class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            </label>
+          </div>
+          <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+            <div>
+              <h4 class="text-sm font-bold text-slate-800">Verifikasi GPS</h4>
+              <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa wajib cek lokasi GPS dan berada dalam radius sekolah.</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggleFiturGps" onchange="updateFiturPresensi()" class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            </label>
+          </div>
+        </div>
+        <div class="border-t pt-4"><h3 class="text-sm font-bold text-slate-800">Status PJJ (Pembelajaran Jarak Jauh)</h3></div>
+        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+          <div class="pr-4">
+            <h4 class="text-sm font-bold text-slate-800">Aktifkan Status PJJ</h4>
+            <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa dapat memilih status PJJ (wajib foto, keterangan, dan lokasi, sama seperti PKL / Izin / Sakit). Jika dimatikan, PJJ tidak bisa dipilih maupun disimpan, dan disembunyikan dari semua tampilan: pilihan status, rekap, matriks, statistik, grafik, dan tab Keterangan. Data PJJ yang sudah tersimpan tidak dihapus dan tampil kembali saat saklar diaktifkan.</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer flex-none">
+            <input type="checkbox" id="togglePjj" onchange="updatePjjSetting()" class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+          </label>
+        </div>
+        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+          <div class="pr-4">
+            <h4 class="text-sm font-bold text-slate-800">Wajib Verifikasi Wali Kelas untuk PJJ</h4>
+            <p class="text-xs text-slate-500 mt-0.5">Jika aktif, presensi PJJ siswa menunggu verifikasi wali kelas dan baru tampil di tab Keterangan Kepala Sekolah &amp; Wakil setelah diverifikasi. Jika dimatikan, PJJ langsung terverifikasi otomatis dan langsung tampil di tab Keterangan Kepala Sekolah &amp; Wakil. Status PKL, Izin, dan Sakit tidak terpengaruh.</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer flex-none">
+            <input type="checkbox" id="togglePjjVerif" onchange="updatePjjVerifSetting()" class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+          </label>
+        </div>
+        <div class="border-t pt-4"><h3 class="text-sm font-bold text-slate-800">Verifikasi Wali Kelas</h3></div>
+        
+        <div class="space-y-4">
+          <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+            <div>
+              <h4 class="text-sm font-bold text-slate-800">Verifikasi Wali Kelas - Presensi Mandiri Siswa</h4>
+              <p class="text-xs text-slate-500 mt-0.5">Jika aktif, presensi mandiri wajib menunggu verifikasi wali kelas. Jika dimatikan, langsung terverifikasi otomatis.</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggleVerifMandiri" onchange="updateVerifikasiSettings()" class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            </label>
+          </div>
+
+          <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+            <div>
+              <h4 class="text-sm font-bold text-slate-800">Verifikasi Wali Kelas - Presensi oleh Sekretaris</h4>
+              <p class="text-xs text-slate-500 mt-0.5">Jika aktif, input sekretaris wajib menunggu verifikasi wali kelas. Jika dimatikan, langsung terverifikasi otomatis.</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggleVerifSekretaris" onchange="updateVerifikasiSettings()" class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            </label>
+          </div>
+
+          <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+            <div class="pr-4">
+              <h4 class="text-sm font-bold text-slate-800">Sekretaris Boleh Verifikasi PKL / Izin / Sakit / PJJ</h4>
+              <p class="text-xs text-slate-500 mt-0.5">Jika aktif, sekretaris dapat memverifikasi (dan memilih) status PKL, Izin, Sakit, dan PJJ. Jika dimatikan, status tersebut terkunci bagi sekretaris sehingga hanya wali kelas yang dapat memverifikasi.</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer flex-none">
+              <input type="checkbox" id="toggleSekBukti" onchange="updateVerifikasiSettings()" class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Tab Tampilan -->
+      <div id="adminTabTampilan" class="hidden max-w-3xl bg-white rounded-2xl shadow-sm border p-6 space-y-6">
+        <div class="border-b pb-4">
+          <h2 class="text-lg font-bold text-primary-800"><i class="fas fa-palette mr-2"></i>Tampilan Aplikasi</h2>
+          <p class="text-xs text-slate-500 mt-1">Pilih tema warna siap pakai atau atur warna sendiri. Setelah disimpan, warna berlaku untuk semua pengguna (admin, wali kelas, kepala sekolah, dan siswa).</p>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-2">Tema Siap Pakai</label>
+          <div id="themePresetGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-2">Warna Kustom</label>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <span class="block text-[11px] font-semibold text-slate-500 mb-1">Warna Utama (header, tombol, tab aktif)</span>
+              <div class="flex items-center gap-2">
+                <input type="color" id="themePrimaryPicker" oninput="onThemeColorInput('primary', this.value, 'picker')" class="h-10 w-12 p-1 border rounded-lg bg-white cursor-pointer">
+                <input type="text" id="themePrimaryHex" maxlength="7" placeholder="#3a63b8" oninput="onThemeColorInput('primary', this.value, 'hex')" class="flex-1 border px-3 py-2 rounded-lg text-xs font-mono font-semibold bg-white">
+              </div>
+            </div>
+            <div>
+              <span class="block text-[11px] font-semibold text-slate-500 mb-1">Warna Aksen (garis header, tombol sekunder, sorotan)</span>
+              <div class="flex items-center gap-2">
+                <input type="color" id="themeSecondaryPicker" oninput="onThemeColorInput('secondary', this.value, 'picker')" class="h-10 w-12 p-1 border rounded-lg bg-white cursor-pointer">
+                <input type="text" id="themeSecondaryHex" maxlength="7" placeholder="#cf9526" oninput="onThemeColorInput('secondary', this.value, 'hex')" class="flex-1 border px-3 py-2 rounded-lg text-xs font-mono font-semibold bg-white">
+              </div>
+            </div>
+          </div>
+          <p id="themeContrastWarn" class="hidden mt-3 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"></p>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-2">Pratinjau</label>
+          <div id="themePreview" class="rounded-xl border overflow-hidden bg-slate-50">
+            <div class="bg-primary-900 px-4 py-3 flex items-center justify-between" style="box-shadow: inset 0 -2px 0 var(--secondary-500);">
+              <div>
+                <div class="font-extrabold text-sm text-secondary-400 tracking-wide">SMART-PRESENSI</div>
+                <div class="text-[11px] text-primary-200">Panel Admin</div>
+              </div>
+              <span class="w-8 h-8 rounded-full bg-secondary-400 text-primary-900 grid place-items-center text-xs font-extrabold">A</span>
+            </div>
+            <div class="p-4 space-y-3">
+              <div class="tab-bar">
+                <button type="button" class="tab-btn tab-btn-active">Kelola Akun</button>
+                <button type="button" class="tab-btn">Verifikasi</button>
+                <button type="button" class="tab-btn">Tampilan</button>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="button" class="bg-primary-700 hover:bg-primary-800 text-white px-4 py-2 rounded-xl text-xs font-bold">Tombol Utama</button>
+                <button type="button" class="bg-secondary-500 hover:bg-secondary-600 text-white px-4 py-2 rounded-xl text-xs font-bold">Tombol Aksen</button>
+                <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-primary-100 text-primary-700">Label</span>
+                <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-secondary-100 text-secondary-700">Label Aksen</span>
+              </div>
+              <input type="text" value="Contoh kolom isian (klik untuk melihat warna fokus)" class="w-full border px-3 py-2 rounded-lg text-xs bg-white focus:ring-2 focus:ring-primary-500">
+            </div>
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 pt-2">
+          <button type="button" onclick="saveThemeSettingsAdmin()" class="bg-primary-700 hover:bg-primary-800 text-white px-5 py-3 rounded-xl text-xs font-bold transition shadow-md flex items-center justify-center space-x-2">
+            <i class="fas fa-save"></i><span>Simpan &amp; Terapkan ke Semua Pengguna</span>
+          </button>
+          <button type="button" onclick="resetThemeToDefault()" class="border bg-white hover:bg-slate-50 text-slate-700 px-5 py-3 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2">
+            <i class="fas fa-undo"></i><span>Kembalikan ke Default</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="adminTabReset" class="hidden max-w-2xl bg-white rounded-2xl shadow-sm border p-6 space-y-6">
+        <div class="border-b pb-4">
+          <h2 class="text-lg font-bold text-rose-700"><i class="fas fa-filter mr-2"></i>Pusat Pembersihan Log Presensi (Wajib Rentang Tanggal)</h2>
+          <p class="text-xs text-slate-500 mt-1">Admin wajib memasukkan rentang tanggal awal dan tanggal akhir untuk menghapus log presensi beserta bukti fotonya pada periode tersebut.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Dari Tanggal <span class="text-rose-600">*</span>:</label>
+            <input type="date" id="clearStartDate" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white focus:ring-2 focus:ring-primary-500">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Sampai Tanggal <span class="text-rose-600">*</span>:</label>
+            <input type="date" id="clearEndDate" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white focus:ring-2 focus:ring-primary-500">
+          </div>
+        </div>
+        <div class="pt-2">
+          <button onclick="executeClearAttendanceLogsByRange()" class="bg-rose-600 hover:bg-rose-700 text-white px-5 py-3 rounded-xl text-xs font-bold transition shadow-md flex items-center justify-center space-x-2 w-full">
+            <i class="fas fa-trash-alt text-sm"><span>Hapus Log Presensi Berdasarkan Rentang Tanggal</span></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wali Kelas / Sekretaris Dashboard -->
+    <div id="waliDashboard" class="hidden space-y-6">
+      <div class="bg-white p-4 rounded-xl shadow-sm border flex flex-col sm:flex-row sm:flex-wrap justify-between sm:items-center gap-3 sm:gap-4">
+        <div>
+          <h2 id="panelTitleText" class="text-lg font-bold text-slate-800">Panel Pengelolaan Presensi</h2>
+          <p class="text-xs text-slate-500" id="waliInfoTag"></p>
+        </div>
+        <div class="tab-bar-row">
+          <div id="waliTabContainer" class="tab-bar">
+            <button id="tabInputBtn" onclick="switchWaliTab('input')" class="tab-btn tab-btn-active">Input Presensi</button>
+            <button id="tabRekapAbsensiBtn" onclick="switchWaliTab('rekapabsensi')" class="tab-btn" style="display:none"><i class="fas fa-clipboard-list mr-1"></i>Rekap Presensi</button>
+            <button id="tabRekapBtn" onclick="switchWaliTab('rekap')" class="tab-btn">Rekap Bulanan</button>
+            <button id="tabMatrixBtn" onclick="switchWaliTab('matrix')" class="tab-btn">Rekap Harian</button>
+            <button id="tabBuktiFotoBtn" onclick="switchWaliTab('buktifoto')" class="tab-btn"><i class="fas fa-camera mr-1"></i>Bukti Foto</button>
+            <button id="tabKeteranganBtn" onclick="switchWaliTab('keterangan')" class="tab-btn"><i class="fas fa-file-pen mr-1"></i>Keterangan</button>
+            <button id="tabBarcodeBtn" onclick="switchWaliTab('barcode')" class="tab-btn"><i class="fas fa-qrcode mr-1"></i>Barcode</button>
+            <button id="tabVerifBarcodeBtn" onclick="switchWaliTab('verifbarcode')" class="tab-btn"><i class="fas fa-user-check mr-1"></i>Verifikasi Barcode</button>
+            <button id="tabSiswaBtn" onclick="switchWaliTab('siswa')" class="tab-btn">Kelola Siswa</button>
+            <button id="tabAkunBtn" onclick="switchWaliTab('akun')" class="tab-btn"><i class="fas fa-user-cog mr-1"></i>Akun Saya</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="waliTabInput" class="space-y-4">
+        <div class="bg-white p-5 rounded-xl shadow-sm border flex flex-wrap gap-4 justify-between items-center">
+          <div class="flex items-center space-x-3">
+            <label class="text-xs font-bold text-slate-700">Tanggal Presensi:</label>
+            <input type="date" id="attendanceDate" onchange="loadAttendanceByDate()" class="border px-3 py-1.5 rounded-lg text-xs font-semibold bg-white">
+          </div>
+          <div id="wrapUpdateSemua" class="flex flex-wrap items-center gap-2">
+            <button type="button" id="btnSimpanSemua" onclick="saveAllAttendance()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition disabled:opacity-50">
+              <i class="fas fa-save mr-1"></i> Update Semua
+            </button>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-100 text-slate-700 uppercase text-xs font-bold border-b">
+              <tr>
+                <th class="p-4 w-16 text-center">No</th>
+                <th class="p-4">NISN</th>
+                <th class="p-4">Nama Siswa</th>
+                <th class="p-4 text-center">Status Kehadiran</th>
+                <th class="p-4 text-center">Keterangan</th>
+                <th class="p-4 text-center">Aksi Baris</th>
+              </tr>
+            </thead>
+            <tbody id="attendanceTableBody" class="divide-y"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="waliTabRekap" class="hidden space-y-4">
+        <div class="bg-white p-5 rounded-xl shadow-sm border flex flex-wrap items-center justify-between gap-4">
+          <div class="flex flex-wrap items-center gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Bulan</label>
+              <select id="waliReportMonth" onchange="loadWaliMonthlyReport()" class="border px-3 py-1.5 rounded-lg text-xs font-semibold bg-white">
+                <option value="ALL">Semua</option><option value="01">Jan</option><option value="02">Feb</option><option value="03">Mar</option><option value="04">Apr</option><option value="05">Mei</option><option value="06">Jun</option><option value="07">Jul</option><option value="08">Agu</option><option value="09">Sep</option><option value="10">Okt</option><option value="11">Nov</option><option value="12">Des</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Tahun</label>
+              <select id="waliReportYear" onchange="loadWaliMonthlyReport()" class="border px-3 py-1.5 rounded-lg text-xs font-semibold bg-white"></select>
+            </div>
+          </div>
+          <button onclick="downloadWaliReportPDF()" class="bg-rose-600 text-white px-4 py-2 rounded-lg text-xs font-bold shadow"><i class="fas fa-download mr-1"></i> Download PDF</button>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border overflow-x-auto p-4">
+          <table id="waliReportTable" class="w-full text-left text-sm">
+            <thead class="bg-slate-100 text-slate-700 uppercase text-xs font-bold border-b">
+              <tr>
+                <th class="p-4 w-16 text-center">No</th>
+                <th class="p-4">NISN</th>
+                <th class="p-4">Nama</th>
+                <th class="p-4 text-center">Hadir</th>
+                <th class="p-4 text-center">PKL</th>
+                <th class="p-4 text-center">Izin</th>
+                <th class="p-4 text-center">Sakit</th>
+                <th class="p-4 text-center pjj-el">PJJ</th>
+                <th class="p-4 text-center text-rose-700">Alpa</th>
+              </tr>
+            </thead>
+            <tbody id="waliReportTableBody" class="divide-y"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="waliTabRekapAbsensi" class="hidden space-y-4">
+        <div class="bg-white p-5 rounded-xl shadow-sm border flex flex-wrap items-center justify-between gap-4">
+          <div class="flex flex-wrap items-center gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Bulan</label>
+              <select id="sekRekapMonth" onchange="loadSekretarisRekap()" class="border px-3 py-1.5 rounded-lg text-xs font-semibold bg-white">
+                <option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option><option value="04">April</option><option value="05">Mei</option><option value="06">Juni</option><option value="07">Juli</option><option value="08">Agustus</option><option value="09">September</option><option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Tahun</label>
+              <select id="sekRekapYear" onchange="loadSekretarisRekap()" class="border px-3 py-1.5 rounded-lg text-xs font-semibold bg-white"></select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Status Kehadiran</label>
+              <select id="sekRekapStatus" onchange="onSekStatusChange()" class="border px-3 py-1.5 rounded-lg text-xs font-semibold bg-white">
+                <option value="alpa" selected>Alpa</option><option value="hadir">Hadir</option><option value="pkl">PKL</option><option value="izin">Izin</option><option value="sakit">Sakit</option>
+              </select>
+            </div>
+          </div>
+          <p id="sekRekapCount" class="text-xs font-semibold text-slate-500"></p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border overflow-x-auto p-4">
+          <table id="sekRekapTable" class="w-full text-left text-sm">
+            <thead id="sekRekapTableHead" class="bg-slate-100 text-slate-700 uppercase text-xs font-bold border-b"></thead>
+            <tbody id="sekRekapTableBody" class="divide-y"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="waliTabMatrix" class="hidden space-y-4">
+        <div class="bg-white p-5 rounded-xl shadow-sm border flex flex-wrap items-center justify-between gap-4">
+          <div class="flex flex-wrap items-center gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Pilih Bulan</label>
+              <select id="matrixReportMonth" onchange="loadWaliMatrixReport()" class="border px-3 py-1.5 rounded-lg text-xs font-semibold bg-white">
+                <option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option>
+                <option value="04">April</option><option value="05">Mei</option><option value="06">Juni</option>
+                <option value="07">Juli</option><option value="08">Agustus</option><option value="09">September</option>
+                <option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Pilih Tahun</label>
+              <select id="matrixReportYear" onchange="loadWaliMatrixReport()" class="border px-3 py-1.5 rounded-lg text-xs font-semibold bg-white"></select>
+            </div>
+          </div>
+          <button onclick="downloadWaliMatrixPDF()" class="bg-rose-600 text-white px-4 py-2 rounded-lg text-xs font-bold shadow"><i class="fas fa-download mr-1"></i> Download PDF Rekap Harian</button>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border overflow-hidden p-4">
+          <div class="overflow-auto max-h-[600px]">
+            <table id="waliMatrixTable" class="w-full text-left text-xs border-collapse bg-white">
+              <thead id="matrixTableHead" class="bg-slate-100 text-slate-700 uppercase font-bold border-b"></thead>
+              <tbody id="matrixTableBody" class="divide-y text-slate-700"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Keterangan Wali Kelas (PKL / Izin / Sakit / PJJ) -->
+      <div id="waliTabKeterangan" class="hidden space-y-4">
+        <div class="bg-white p-5 rounded-xl shadow-sm border space-y-4">
+          <h3 class="text-base font-bold text-slate-800"><i class="fas fa-file-pen text-primary-600 mr-2"></i>Keterangan Siswa (PKL, Izin, Sakit<span class="pjj-el">, PJJ</span>)</h3>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border items-end">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Filter Bulan</label>
+              <select id="filterWaliKetMonth" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white">
+                <option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option><option value="04">April</option><option value="05">Mei</option><option value="06">Juni</option><option value="07">Juli</option><option value="08">Agustus</option><option value="09">September</option><option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Filter Tahun</label>
+              <select id="filterWaliKetYear" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white"></select>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-xs font-bold text-slate-700">Filter Tanggal Spesifik <span class="font-normal text-slate-400">(opsional)</span></label>
+                <button type="button" onclick="clearKetDate_('waliKet')" class="text-[11px] font-bold text-primary-700 hover:underline">Reset</button>
+              </div>
+              <input type="date" id="filterWaliKetDate" onchange="onKetDateChange_('waliKet')" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white">
+            </div>
+            <div>
+              <button onclick="loadWaliKeteranganLogs()" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition shadow-md flex items-center justify-center space-x-1.5 h-[38px]">
+                <i class="fas fa-search"></i><span>Tampilkan</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+          <div id="waliKetInitialState" class="p-8 text-center text-slate-400 text-xs font-medium bg-slate-50 rounded-xl border border-dashed m-4">
+            <i class="fas fa-file-pen text-3xl text-primary-400 mb-2 block"></i>
+            Tentukan bulan dan tahun, lalu klik <b>"Tampilkan"</b> untuk memuat keterangan siswa kelas Anda.
+          </div>
+          <div id="waliKetContentWrapper" class="hidden overflow-x-auto">
+            <div class="px-4 pt-4 flex flex-wrap items-center justify-between gap-2">
+              <p id="waliKetSummary" class="text-xs font-semibold text-slate-500"></p>
+              <button type="button" onclick="downloadKeteranganPDF('waliKet')" class="bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold shadow"><i class="fas fa-download mr-1"></i> Download PDF (A4 Landscape)</button>
+            </div>
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-100 text-slate-700 uppercase text-xs font-bold border-b">
+                <tr>
+                  <th class="p-4 w-16 text-center">No</th>
+                  <th class="p-4">Tanggal</th>
+                  <th class="p-4">NISN</th>
+                  <th class="p-4">Nama Siswa</th>
+                  <th class="p-4">Kelas & Jurusan</th>
+                  <th class="p-4 text-center">Status</th>
+                  <th class="p-4">Keterangan</th>
+                  <th class="p-4 text-center">Bukti Foto</th>
+                  <th id="waliKetThLokasi" class="p-4 text-center hidden">Lokasi</th>
+                </tr>
+              </thead>
+              <tbody id="waliKetTableBody" class="divide-y text-slate-700"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Bukti Foto Wali Kelas -->
+      <div id="waliTabBuktiFoto" class="hidden space-y-4">
+        <div class="bg-white p-5 rounded-xl shadow-sm border space-y-4">
+          <h3 class="text-base font-bold text-slate-800"><i class="fas fa-camera text-primary-600 mr-2"></i>Daftar Bukti Foto Kehadiran Siswa</h3>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border items-end">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Filter Tanggal Spesifik</label>
+              <input type="date" id="filterWaliPhotoDate" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Filter Bulan</label>
+              <select id="filterWaliPhotoMonth" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white">
+                <option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option><option value="04">April</option><option value="05">Mei</option><option value="06">Juni</option><option value="07">Juli</option><option value="08">Agustus</option><option value="09">September</option><option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Filter Tahun</label>
+              <select id="filterWaliPhotoYear" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white"></select>
+            </div>
+            <div>
+              <button onclick="loadWaliPhotoLogs()" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition shadow-md flex items-center justify-center space-x-1.5 h-[38px]">
+                <i class="fas fa-search"></i><span>Tampilkan Foto</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+          <div id="waliPhotoInitialState" class="p-8 text-center text-slate-400 text-xs font-medium bg-slate-50 rounded-xl border border-dashed m-4">
+            <i class="fas fa-camera-retro text-3xl text-primary-400 mb-2 block"></i>
+            Silakan tentukan filter tanggal atau bulan, lalu klik tombol <b>"Tampilkan Foto"</b> untuk memuat daftar bukti foto.
+          </div>
+          <div id="waliPhotoContentWrapper" class="hidden overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-100 text-slate-700 uppercase text-xs font-bold border-b">
+                <tr>
+                  <th class="p-4 w-16 text-center">No</th>
+                  <th class="p-4">Tanggal</th>
+                  <th class="p-4">NISN</th>
+                  <th class="p-4">Nama Siswa</th>
+                  <th class="p-4 text-center">Status</th>
+                  <th id="waliPhotoThVerif" class="p-4">Verifikasi Barcode dari</th>
+                  <th class="p-4 text-center">Bukti Foto Selfie</th>
+                </tr>
+              </thead>
+              <tbody id="waliPhotoTableBody" class="divide-y text-slate-700"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="waliTabBarcode" class="hidden max-w-md mx-auto bg-white rounded-2xl shadow-sm border p-6 space-y-4 text-center">
+        <div>
+          <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-qrcode text-primary-600 mr-2"></i>Barcode Presensi Siswa</h2>
+          <p id="barcodeKelasInfo" class="text-xs text-slate-500 mt-1"></p>
+        </div>
+        <div class="flex justify-center"><div id="barcodeQrBox" class="p-3 bg-white border rounded-xl min-h-[264px] min-w-[264px] flex items-center justify-center text-xs text-slate-400">Memuat barcode...</div></div>
+        <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden"><div id="barcodeCountBar" class="h-full bg-primary-600" style="width:100%"></div></div>
+        <p class="text-xs font-semibold text-slate-600"><i class="fas fa-clock mr-1"></i>Berganti otomatis dalam <span id="barcodeCountText">60:00</span></p>
+        <p class="text-[11px] text-slate-500">Barcode dinamis, berganti tiap 60 menit. Tampilkan layar ini untuk siswa (jangan dicetak, karena kode akan berganti). Siswa scan lewat laman presensi setelah mengambil foto selfie.</p>
+      </div>
+
+      <div id="waliTabVerifBarcode" class="hidden space-y-4">
+        <div class="bg-white p-5 rounded-xl shadow-sm border space-y-4">
+          <h3 class="text-base font-bold text-slate-800"><i class="fas fa-user-check text-primary-600 mr-2"></i>Verifikasi Barcode Siswa</h3>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-xl border items-end">
+            <div><label class="block text-xs font-bold text-slate-700 mb-1">Dari Tanggal</label><input type="date" id="verifBcStart" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1">Sampai Tanggal</label><input type="date" id="verifBcEnd" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white"></div>
+            <label class="flex items-center space-x-2 text-xs font-semibold text-slate-700 h-[38px]"><input type="checkbox" id="verifBcMine" onchange="renderVerifBarcode()"><span>Hanya barcode saya</span></label>
+            <button onclick="loadVerifBarcode()" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition shadow-md flex items-center justify-center space-x-1.5 h-[38px]"><i class="fas fa-search"></i><span>Tampilkan</span></button>
+          </div>
+          <p id="verifBcSummary" class="text-xs font-semibold text-slate-600"></p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-100 text-slate-700 uppercase text-xs font-bold border-b"><tr>
+              <th class="p-4 w-16 text-center">No</th><th class="p-4">Tanggal</th><th class="p-4">NISN</th><th class="p-4">Nama Siswa</th><th class="p-4 text-center">Status</th><th class="p-4">Verifikasi Barcode dari</th>
+            </tr></thead>
+            <tbody id="verifBcBody" class="divide-y text-slate-700"><tr><td colspan="6" class="p-6 text-center text-xs text-slate-400">Pilih rentang tanggal lalu klik "Tampilkan".</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="waliTabSiswa" class="hidden space-y-4">
+        <div class="flex flex-wrap justify-between items-center bg-white p-4 rounded-xl border shadow-sm gap-3">
+          <div class="flex items-center space-x-3">
+            <h3 class="font-bold text-slate-800 text-base">Daftar Siswa Kelas</h3>
+            <button id="btnBulkDeleteStudents" onclick="deleteSelectedStudentsBatch()" class="hidden bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-sm items-center space-x-1">
+              <i class="fas fa-trash-alt mr-1"></i> <span>Hapus Terpilih (<span id="selectedCountBadge">0</span>)</span>
+            </button>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="downloadStudentTemplate()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition">
+              <i class="fas fa-file-excel mr-1"></i> Unduh Template
+            </button>
+            <button onclick="exportStudentsExcel()" class="bg-secondary-600 hover:bg-secondary-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition">
+              <i class="fas fa-file-export mr-1"></i> Export Excel
+            </button>
+            <label class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-bold cursor-pointer transition">
+              <i class="fas fa-file-import mr-1"></i> Import Excel
+              <input type="file" id="excelFileInput" accept=".xlsx, .xls" onchange="handleExcelImport(event)" class="hidden">
+            </label>
+            <button onclick="openStudentModal()" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition">
+              <i class="fas fa-plus mr-1"></i> Tambah Siswa
+            </button>
+          </div>
+          <div class="w-full flex flex-wrap items-center gap-2 pt-3 border-t">
+            <button id="btnPindahKelas" onclick="openPindahKelasModal()" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-lg text-xs font-bold transition">
+              <i class="fas fa-exchange-alt mr-1"></i> Pindah Kelas
+            </button>
+            <button id="btnNaikKelas" onclick="naikKelasSubmit()" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition">
+              <i class="fas fa-level-up-alt mr-1"></i> <span id="naikKelasLabel">Naik Kelas</span>
+            </button>
+            <button id="btnTamatKelas" onclick="tamatSubmit()" class="hidden bg-rose-700 hover:bg-rose-800 text-white px-3 py-2 rounded-lg text-xs font-bold transition">
+              <i class="fas fa-graduation-cap mr-1"></i> Tamat (Hapus Data Lulusan)
+            </button>
+            <span class="text-[11px] text-slate-500"><b>Centang siswa terlebih dahulu</b> sebelum menekan tombol ini (centang kotak di header tabel untuk memilih semua).</span>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-100 text-slate-700 uppercase text-xs font-bold border-b">
+              <tr>
+                <th class="p-4 w-12 text-center">
+                  <input type="checkbox" id="selectAllStudentsCheckbox" onchange="toggleSelectAllStudents(this)" class="rounded border-slate-300 text-primary-600 focus:ring-primary-500 w-4 h-4 cursor-pointer">
+                </th>
+                <th class="p-4 w-12 text-center">No</th>
+                <th class="p-4">NISN</th>
+                <th class="p-4">Nama Lengkap</th>
+                <th class="p-4">Akun Login (User / Pass)</th>
+                <th class="p-4 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="studentTableBody" class="divide-y"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="waliTabAkun" class="hidden max-w-xl mx-auto bg-white rounded-2xl shadow-sm border p-6 space-y-6">
+        <div class="border-b pb-4">
+          <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-user-edit text-primary-600 mr-2"></i>Pengaturan Akun Saya</h3>
+          <p class="text-xs text-slate-500 mt-1">Perbarui informasi kredensial login dan nama lengkap Anda di sini.</p>
+        </div>
+        <form onsubmit="handleUpdateMyAccount(event)" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Username Login</label>
+            <input type="text" id="myAccountUsername" required class="w-full border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Password Baru</label>
+            <input type="text" id="myAccountPassword" required class="w-full border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500" placeholder="Masukkan password baru">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap & Gelar</label>
+            <input type="text" id="myAccountNama" required class="w-full border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500">
+          </div>
+          <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border">
+            <div>
+              <span class="block text-[11px] font-bold text-slate-400 uppercase">Peran (Role)</span>
+              <span id="myAccountRoleDisplay" class="text-xs font-bold text-slate-700 mt-0.5 block"></span>
+            </div>
+            <div>
+              <span class="block text-[11px] font-bold text-slate-400 uppercase">Kelas & Jurusan</span>
+              <span id="myAccountKelasDisplay" class="text-xs font-bold text-slate-700 mt-0.5 block"></span>
+            </div>
+          </div>
+          <button type="submit" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-xl text-sm transition shadow-md">
+            <i class="fas fa-save mr-2"></i> Simpan Perubahan Akun
+          </button>
+        </form>
+      </div>
+
+    </div>
+
+    <!-- Kepsek / Wakepsek Dashboard -->
+    <div id="barcodeDashboard" onclick="enterBarcodeFullscreen()" class="hidden fixed inset-0 z-[90] bg-white flex flex-col items-center justify-center p-4 text-center space-y-3 overflow-y-auto">
+      <div class="absolute top-3 right-3 flex space-x-2">
+        <button onclick="event.stopPropagation(); toggleBarcodeFullscreen()" class="px-3 py-2 border rounded-lg text-xs font-bold text-slate-700 bg-white"><i class="fas fa-expand mr-1"></i>Layar Penuh</button>
+        <button onclick="event.stopPropagation(); logout()" class="px-3 py-2 border rounded-lg text-xs font-bold text-rose-600 bg-white"><i class="fas fa-right-from-bracket mr-1"></i>Keluar</button>
+      </div>
+      <div>
+        <h2 class="text-xl md:text-2xl font-bold text-slate-800"><i class="fas fa-qrcode text-primary-600 mr-2"></i>Barcode Presensi Siswa</h2>
+        <p class="text-xs text-slate-500 mt-1">Barcode universal • berlaku untuk semua kelas</p>
+      </div>
+      <div id="barcodeQrBox2" class="p-3 bg-white border rounded-xl flex items-center justify-center text-xs text-slate-400">Memuat barcode...</div>
+      <div class="w-full max-w-md h-2 bg-slate-100 rounded-full overflow-hidden"><div id="barcodeCountBar2" class="h-full bg-primary-600" style="width:100%"></div></div>
+      <p class="text-sm font-semibold text-slate-600">Berganti dalam <span id="barcodeCountText2">30</span> detik</p>
+      <div class="w-full max-w-2xl bg-primary-50 border border-primary-200 rounded-xl p-3">
+        <p class="text-xs font-bold text-primary-800 mb-2"><i class="fas fa-circle-info mr-1"></i>Urutan verifikasi presensi siswa</p>
+        <div id="bcStepsList" class="flex flex-wrap items-center justify-center gap-y-1 text-xs text-slate-700">Memuat...</div>
+        <p id="bcStepsWarn" class="hidden text-[11px] text-rose-600 font-semibold mt-2"></p>
+      </div>
+      <p id="bcFsHint" class="hidden text-[11px] text-primary-700 font-semibold"><i class="fas fa-hand-pointer mr-1"></i>Ketuk layar untuk masuk mode layar penuh</p>
+    </div>
+
+    <div id="kepsekDashboard" class="hidden space-y-6">
+      <div class="tab-bar">
+        <button id="kepsekTabMatrixBtn" onclick="switchKepsekTab('matrix')" class="tab-btn tab-btn-active">
+          <i class="fas fa-chart-line mr-1.5"></i>Matriks Rekap Bulanan
+        </button>
+        <button id="kepsekTabBuktiFotoBtn" onclick="switchKepsekTab('buktifoto')" class="tab-btn">
+          <i class="fas fa-camera mr-1.5"></i>Tab Bukti Foto (Semua Kelas)
+        </button>
+        <button id="kepsekTabKeteranganBtn" onclick="switchKepsekTab('keterangan')" class="tab-btn">
+          <i class="fas fa-file-pen mr-1.5"></i>Keterangan
+        </button>
+        <button id="kepsekTabAkunBtn" onclick="switchKepsekTab('akun')" class="tab-btn">
+          <i class="fas fa-user-cog mr-1.5"></i>Akun Saya
+        </button>
+      </div>
+
+      <div id="kepsekSectionMatrix" class="space-y-6">
+       <div id="kepsekStatGrid" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+  <!-- Total Siswa -->
+  <div class="bg-white p-3.5 rounded-xl border shadow-sm flex items-center justify-between">
+    <div>
+      <p class="text-[10px] font-bold text-slate-400 uppercase">Total Siswa</p>
+      <h4 id="statTotalSiswa" class="text-lg font-extrabold text-primary-600 mt-1">0</h4>
+    </div>
+    <div class="w-9 h-9 bg-primary-50 text-primary-600 rounded-xl flex items-center justify-center text-base"><i class="fas fa-users"></i></div>
+  </div>
+
+  <!-- Hadir -->
+  <div class="bg-white p-3.5 rounded-xl border shadow-sm flex items-center justify-between">
+    <div>
+      <p class="text-[10px] font-bold text-slate-400 uppercase">% Kehadiran</p>
+      <h4 id="statPersentaseHadir" class="text-lg font-extrabold text-emerald-600 mt-1">0%</h4>
+    </div>
+    <div class="w-9 h-9 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-base"><i class="fas fa-user-check"></i></div>
+  </div>
+
+  <!-- PKL -->
+  <div class="bg-white p-3.5 rounded-xl border shadow-sm flex items-center justify-between">
+    <div>
+      <p class="text-[10px] font-bold text-slate-400 uppercase">% PKL</p>
+      <h4 id="statPersentasePkl" class="text-lg font-extrabold text-purple-600 mt-1">0%</h4>
+    </div>
+    <div class="w-9 h-9 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center text-base"><i class="fas fa-briefcase"></i></div>
+  </div>
+
+  <!-- Izin -->
+  <div class="bg-white p-3.5 rounded-xl border shadow-sm flex items-center justify-between">
+    <div>
+      <p class="text-[10px] font-bold text-slate-400 uppercase">% Izin</p>
+      <h4 id="statPersentaseIzin" class="text-lg font-extrabold text-blue-600 mt-1">0%</h4>
+    </div>
+    <div class="w-9 h-9 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-base"><i class="fas fa-envelope-open-text"></i></div>
+  </div>
+
+  <!-- Sakit -->
+  <div class="bg-white p-3.5 rounded-xl border shadow-sm flex items-center justify-between">
+    <div>
+      <p class="text-[10px] font-bold text-slate-400 uppercase">% Sakit</p>
+      <h4 id="statPersentaseSakit" class="text-lg font-extrabold text-secondary-600 mt-1">0%</h4>
+    </div>
+    <div class="w-9 h-9 bg-secondary-50 text-secondary-600 rounded-xl flex items-center justify-center text-base"><i class="fas fa-notes-medical"></i></div>
+  </div>
+
+  <!-- PJJ -->
+  <div class="pjj-el bg-white p-3.5 rounded-xl border shadow-sm flex items-center justify-between">
+    <div>
+      <p class="text-[10px] font-bold text-slate-400 uppercase">% PJJ</p>
+      <h4 id="statPersentasePjj" class="text-lg font-extrabold text-teal-600 mt-1">0%</h4>
+    </div>
+    <div class="w-9 h-9 bg-teal-50 text-teal-600 rounded-xl flex items-center justify-center text-base"><i class="fas fa-laptop-house"></i></div>
+  </div>
+
+  <!-- Alpa -->
+  <div class="bg-white p-3.5 rounded-xl border shadow-sm flex items-center justify-between">
+    <div>
+      <p class="text-[10px] font-bold text-slate-400 uppercase">% Alpa</p>
+      <h4 id="statPersentaseAlpa" class="text-lg font-extrabold text-rose-600 mt-1">0%</h4>
+    </div>
+    <div class="w-9 h-9 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center text-base"><i class="fas fa-user-times"></i></div>
+  </div>
+</div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="bg-white rounded-xl border shadow-sm p-5 md:col-span-2 flex flex-col justify-center">
+            <h3 class="text-sm font-bold text-slate-700 mb-3"><i class="fas fa-chart-bar text-primary-600 mr-2"></i>Statistik Kehadiran Keseluruhan</h3>
+            <div class="h-48 relative">
+              <canvas id="kepsekBarChart"></canvas>
+            </div>
+          </div>
+          <div class="bg-white rounded-xl border shadow-sm p-5 flex flex-col justify-center items-center">
+            <h3 class="text-sm font-bold text-slate-700 mb-2 self-start"><i class="fas fa-chart-pie text-primary-600 mr-2"></i>Rasio Kehadiran</h3>
+            <div class="w-40 h-40 relative">
+              <canvas id="kepsekPieChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl shadow-sm border space-y-4">
+          <div class="flex justify-between items-center border-b pb-3">
+            <h2 id="kepsekHeaderTitle" class="text-base font-bold text-slate-800">Filter Laporan Matriks Harian Manajemen Sekolah</h2>
+            <button onclick="downloadKepsekReportPDF()" class="bg-rose-600 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition hover:bg-rose-700 shadow"><i class="fas fa-download mr-1"></i> Download PDF</button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+            <div class="bg-emerald-50/70 p-3 rounded-xl border border-emerald-100">
+              <label class="block text-xs font-bold text-emerald-900 mb-1"><i class="fas fa-calendar-alt mr-1 text-emerald-600"></i> Bulan</label>
+              <select id="filterKepsekMonth" class="w-full border border-emerald-200 bg-white px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                <option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option>
+                <option value="04">April</option><option value="05">Mei</option><option value="06">Juni</option>
+                <option value="07">Juli</option><option value="08">Agustus</option><option value="09">September</option>
+                <option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+              </select>
+            </div>
+            <div class="bg-secondary-50/70 p-3 rounded-xl border border-secondary-100">
+              <label class="block text-xs font-bold text-secondary-900 mb-1"><i class="fas fa-clock mr-1 text-secondary-600"></i> Tahun</label>
+              <select id="filterKepsekYear" class="w-full border border-secondary-200 bg-white px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-secondary-400"></select>
+            </div>
+            <div class="bg-purple-50/70 p-3 rounded-xl border border-purple-100">
+              <label class="block text-xs font-bold text-purple-900 mb-1"><i class="fas fa-school mr-1 text-purple-600"></i> Kelas</label>
+              <select id="filterKepsekGrade" class="w-full border border-purple-200 bg-white px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-400">
+                <option value="X">X</option><option value="XI">XI</option><option value="XII">XII</option>
+              </select>
+            </div>
+            <div class="bg-rose-50/70 p-3 rounded-xl border border-rose-100">
+              <label class="block text-xs font-bold text-rose-900 mb-1"><i class="fas fa-graduation-cap mr-1 text-rose-600"></i> Jurusan</label>
+              <select id="filterKepsekMajor" class="w-full border border-rose-200 bg-white px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-400">
+                <option value="AKL">AKL</option><option value="MPLB">MPLB</option><option value="TJKT">TJKT</option>
+              </select>
+            </div>
+            <div>
+              <button onclick="loadKepsekData()" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow-md flex items-center justify-center space-x-1.5 h-[42px]">
+                <i class="fas fa-search"></i><span>Tampilkan Data</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="kepsekTableContainer" class="bg-white rounded-xl border shadow-sm p-5 space-y-4">
+          <h3 class="text-base font-bold text-slate-800">📋 Rekapitulasi Matriks Presensi Siswa</h3>
+          <div id="kepsekMatrixInitialState" class="p-8 text-center text-slate-400 text-xs font-medium bg-slate-50 rounded-xl border border-dashed">
+            <i class="fas fa-filter text-3xl text-primary-400 mb-2 block"></i>
+            Silakan tentukan pilihan filter Bulan, Tahun, Kelas, dan Jurusan di atas, lalu klik tombol <b>"Tampilkan Data"</b> untuk memuat rincian tabel matriks siswa.
+          </div>
+          <div id="kepsekWaliInfo" class="hidden flex items-center gap-2 bg-primary-50 border border-primary-100 text-slate-700 rounded-xl px-4 py-2.5 text-xs">
+            <i class="fas fa-chalkboard-teacher text-primary-600"></i>
+            <span class="font-semibold">Wali Kelas <span id="kepsekWaliKelasLabel"></span>:</span>
+            <span id="kepsekWaliNama" class="font-bold text-slate-900"></span>
+          </div>
+          <div id="kepsekMatrixContentWrapper" class="hidden overflow-auto max-h-[600px]">
+            <table id="kepsekMatrixTable" class="w-full text-left text-xs border-collapse bg-white">
+              <thead id="kepsekTableHead" class="bg-slate-100 text-slate-700 uppercase font-bold border-b"></thead>
+              <tbody id="kepsekRecordsTableBody" class="divide-y text-slate-700"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Bukti Foto Kepsek -->
+      <div id="kepsekSectionBuktiFoto" class="hidden space-y-4">
+        <div class="bg-white p-5 rounded-xl shadow-sm border space-y-4">
+          <h3 class="text-base font-bold text-slate-800"><i class="fas fa-camera text-primary-600 mr-2"></i>Daftar Bukti Foto Kehadiran Seluruh Siswa Sekolah</h3>
+          <div class="grid grid-cols-1 md:grid-cols-6 gap-3 bg-slate-50 p-4 rounded-xl border items-end">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Tanggal Spesifik</label>
+              <input type="date" id="filterGlobalPhotoDate" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Bulan</label>
+              <select id="filterGlobalPhotoMonth" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white">
+                <option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option><option value="04">April</option><option value="05">Mei</option><option value="06">Juni</option><option value="07">Juli</option><option value="08">Agustus</option><option value="09">September</option><option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Tahun</label>
+              <select id="filterGlobalPhotoYear" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white"></select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Kelas</label>
+              <select id="filterGlobalPhotoGrade" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white">
+                <option value="X">X</option><option value="XI">XI</option><option value="XII">XII</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Jurusan</label>
+              <select id="filterGlobalPhotoMajor" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white">
+                <option value="AKL">AKL</option><option value="MPLB">MPLB</option><option value="TJKT">TJKT</option>
+              </select>
+            </div>
+            <div>
+              <button onclick="loadGlobalPhotoLogs()" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition shadow-md flex items-center justify-center space-x-1.5 h-[38px]">
+                <i class="fas fa-search"></i><span>Tampilkan Foto</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+          <div id="globalPhotoInitialState" class="p-8 text-center text-slate-400 text-xs font-medium bg-slate-50 rounded-xl border border-dashed m-4">
+            <i class="fas fa-camera-retro text-3xl text-primary-400 mb-2 block"></i>
+            Silakan tentukan parameter filter di atas, lalu klik tombol <b>"Tampilkan Foto"</b> untuk memuat daftar bukti foto seluruh sekolah.
+          </div>
+          <div id="globalPhotoContentWrapper" class="hidden overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-100 text-slate-700 uppercase text-xs font-bold border-b">
+                <tr>
+                  <th class="p-4 w-16 text-center">No</th>
+                  <th class="p-4">Tanggal</th>
+                  <th class="p-4">NISN</th>
+                  <th class="p-4">Nama Siswa</th>
+                  <th class="p-4">Kelas & Jurusan</th>
+                  <th class="p-4 text-center">Status</th>
+                  <th class="p-4 text-center">Bukti Foto Selfie</th>
+                </tr>
+              </thead>
+              <tbody id="globalPhotoTableBody" class="divide-y text-slate-700"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Keterangan Kepsek / Wakepsek -->
+      <div id="kepsekSectionKeterangan" class="hidden space-y-4">
+        <div class="bg-white p-5 rounded-xl shadow-sm border space-y-4">
+          <h3 class="text-base font-bold text-slate-800"><i class="fas fa-file-pen text-primary-600 mr-2"></i>Keterangan Siswa (PKL, Izin, Sakit<span class="pjj-el">, PJJ</span>)</h3>
+          <div class="grid grid-cols-1 md:grid-cols-6 gap-3 bg-slate-50 p-4 rounded-xl border items-end">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Filter Bulan</label>
+              <select id="filterKetMonth" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white">
+                <option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option><option value="04">April</option><option value="05">Mei</option><option value="06">Juni</option><option value="07">Juli</option><option value="08">Agustus</option><option value="09">September</option><option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Filter Tahun</label>
+              <select id="filterKetYear" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white"></select>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-xs font-bold text-slate-700">Filter Tanggal Spesifik <span class="font-normal text-slate-400">(opsional)</span></label>
+                <button type="button" onclick="clearKetDate_('ket')" class="text-[11px] font-bold text-primary-700 hover:underline">Reset</button>
+              </div>
+              <input type="date" id="filterKetDate" onchange="onKetDateChange_('ket')" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Kelas</label>
+              <select id="filterKetGrade" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white">
+                <option value="X">X</option><option value="XI">XI</option><option value="XII">XII</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Jurusan</label>
+              <select id="filterKetMajor" class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-white">
+                <option value="AKL">AKL</option><option value="MPLB">MPLB</option><option value="TJKT">TJKT</option>
+              </select>
+            </div>
+            <div>
+              <button onclick="loadKeteranganLogs()" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition shadow-md flex items-center justify-center space-x-1.5 h-[38px]">
+                <i class="fas fa-search"></i><span>Tampilkan</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+          <div id="ketInitialState" class="p-8 text-center text-slate-400 text-xs font-medium bg-slate-50 rounded-xl border border-dashed m-4">
+            <i class="fas fa-file-pen text-3xl text-primary-400 mb-2 block"></i>
+            Tentukan filter di atas, lalu klik <b>"Tampilkan"</b> untuk memuat keterangan siswa.
+          </div>
+          <div id="ketContentWrapper" class="hidden overflow-x-auto">
+            <div class="px-4 pt-4 flex flex-wrap items-center justify-between gap-2">
+              <p id="ketSummary" class="text-xs font-semibold text-slate-500"></p>
+              <button type="button" onclick="downloadKeteranganPDF('ket')" class="bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold shadow"><i class="fas fa-download mr-1"></i> Download PDF (A4 Landscape)</button>
+            </div>
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-100 text-slate-700 uppercase text-xs font-bold border-b">
+                <tr>
+                  <th class="p-4 w-16 text-center">No</th>
+                  <th class="p-4">Tanggal</th>
+                  <th class="p-4">NISN</th>
+                  <th class="p-4">Nama Siswa</th>
+                  <th class="p-4">Kelas & Jurusan</th>
+                  <th class="p-4 text-center">Status</th>
+                  <th class="p-4">Keterangan</th>
+                  <th class="p-4 text-center">Bukti Foto</th>
+                  <th id="ketThLokasi" class="p-4 text-center hidden">Lokasi</th>
+                </tr>
+              </thead>
+              <tbody id="ketTableBody" class="divide-y text-slate-700"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Akun Saya Kepsek / Wakepsek -->
+      <div id="kepsekSectionAkun" class="hidden max-w-xl mx-auto bg-white rounded-2xl shadow-sm border p-6 space-y-6">
+        <div class="border-b pb-4">
+          <h3 class="text-lg font-bold text-slate-800"><i class="fas fa-user-edit text-primary-600 mr-2"></i>Pengaturan Akun Saya</h3>
+          <p class="text-xs text-slate-500 mt-1">Perbarui informasi kredensial login dan nama lengkap Anda di sini.</p>
+        </div>
+        <form onsubmit="handleUpdateMyAccount(event)" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Username Login</label>
+            <input type="text" id="kepsekAccountUsername" required class="w-full border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Password Baru</label>
+            <input type="text" id="kepsekAccountPassword" required class="w-full border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500" placeholder="Masukkan password baru">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap & Gelar</label>
+            <input type="text" id="kepsekAccountNama" required class="w-full border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500">
+          </div>
+          <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border">
+            <div>
+              <span class="block text-[11px] font-bold text-slate-400 uppercase">Peran (Role)</span>
+              <span id="kepsekAccountRoleDisplay" class="text-xs font-bold text-slate-700 mt-0.5 block"></span>
+            </div>
+            <div>
+              <span class="block text-[11px] font-bold text-slate-400 uppercase">Akses Ruang Lingkup</span>
+              <span class="text-xs font-bold text-slate-700 mt-0.5 block">Seluruh Sekolah</span>
+            </div>
+          </div>
+          <button type="submit" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 rounded-xl text-sm transition shadow-md">
+            <i class="fas fa-save mr-2"></i> Simpan Perubahan Akun
+          </button>
+        </form>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Modals -->
+  <div id="userModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+      <h3 id="userModalTitle" class="font-bold border-b pb-2 text-base">Tambah Akun</h3>
+      <form onsubmit="saveUserSubmit(event)" class="space-y-3">
+        <div><label class="block text-xs font-semibold">Username</label><input type="text" id="modalUsername" required class="w-full border p-2 rounded text-xs"><input type="hidden" id="modalOldUsername" value=""></div>
+        <div><label class="block text-xs font-semibold">Password</label><input type="password" id="modalPassword" required class="w-full border p-2 rounded text-xs"></div>
+        <div id="modalNamaWrap"><label class="block text-xs font-semibold">Nama Lengkap</label><input type="text" id="modalNama" required class="w-full border p-2 rounded text-xs"></div>
+        <div><label class="block text-xs font-semibold">Role</label><select id="modalRole" onchange="toggleUserClassSection()" class="w-full border p-2 rounded text-xs"><option value="Guru Wali Kelas">Guru Wali Kelas</option><option value="Sekretaris">Sekretaris Kelas</option><option value="Wakil Kepala Sekolah">Wakil Kepala Sekolah</option><option value="Kepala Sekolah">Kepala Sekolah</option><option value="Barcode">Barcode (layar barcode universal)</option></select></div>
+        <div id="modalClassJurusanContainer" class="grid grid-cols-2 gap-2">
+          <div><label class="block text-xs font-semibold">Kelas</label><select id="modalKelas" class="w-full border p-2 rounded text-xs"><option value="X">X</option><option value="XI">XI</option><option value="XII">XII</option></select></div>
+          <div><label class="block text-xs font-semibold">Jurusan</label><select id="modalJurusan" class="w-full border p-2 rounded text-xs"><option value="AKL">AKL</option><option value="MPLB">MPLB</option><option value="TJKT">TJKT</option></select></div>
+        </div>
+        <div class="flex justify-end space-x-2 pt-2"><button type="button" onclick="closeUserModal()" class="px-4 py-2 border rounded text-xs">Batal</button><button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded text-xs">Simpan</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="pindahKelasModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+      <h3 class="text-base font-bold text-slate-800"><i class="fas fa-exchange-alt text-amber-500 mr-2"></i>Pindah Kelas (Ganti Jurusan)</h3>
+      <p id="pindahKelasInfo" class="text-xs text-slate-600"></p>
+      <div>
+        <label class="block text-xs font-bold text-slate-700 mb-1">Jurusan Tujuan (kelas tetap)</label>
+        <select id="pindahJurusanSelect" class="w-full border px-3 py-2 rounded-lg text-sm bg-white">
+          <option value="AKL">AKL</option><option value="MPLB">MPLB</option><option value="TJKT">TJKT</option>
+        </select>
+      </div>
+      <div class="flex justify-end space-x-2 pt-2">
+        <button type="button" onclick="closePindahKelasModal()" class="px-4 py-2 border rounded-lg text-xs">Batal</button>
+        <button type="button" onclick="submitPindahKelas()" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold">Pindahkan</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="studentModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+      <h3 id="studentModalTitle" class="font-bold border-b pb-2 text-base">Tambah Siswa</h3>
+      <form onsubmit="saveStudentSubmit(event)" class="space-y-3">
+        <input type="hidden" id="modalStudentId">
+        <div><label class="block text-xs font-semibold">NISN</label><input type="text" id="modalStudentNisn" required class="w-full border p-2 rounded text-xs"></div>
+        <div><label class="block text-xs font-semibold">Nama Lengkap</label><input type="text" id="modalStudentNama" required class="w-full border p-2 rounded text-xs"></div>
+        <div><label class="block text-xs font-semibold">Username Login</label><input type="text" id="modalStudentUsername" class="w-full border p-2 rounded text-xs" placeholder="Kosongkan = otomatis NISN"></div>
+        <div><label class="block text-xs font-semibold">Password Login</label><input type="password" id="modalStudentPassword" class="w-full border p-2 rounded text-xs" placeholder="Default: 123"></div>
+        <div class="flex justify-end space-x-2 pt-2"><button type="button" onclick="closeStudentModal()" class="px-4 py-2 border rounded text-xs">Batal</button><button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded text-xs">Simpan</button></div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let currentUser = null;
+    let currentStudentsList = [];
+    let kepsekBarChartInstance = null;
+    let kepsekPieChartInstance = null;
+    let capturedSelfieBase64 = null;
+    let gpsCheckedOk = false;        // true hanya jika "Cek Lokasi GPS" (langkah 3) sukses & dalam radius sekolah
+    let gpsCheckedAt = 0;            // waktu terakhir kali cek GPS sukses, untuk cegah data GPS basi
+    let gpsCheckedMode = '';         // 'hadir' atau 'bukti' (PKL/Izin/Sakit/PJJ): hasil cek GPS hanya berlaku untuk mode yang sama
+    const GPS_CHECK_TTL_MS = 2 * 60 * 1000; // hasil cek GPS dianggap kedaluwarsa setelah 2 menit
+    
+    let appCache = {
+      attendanceData: null,
+      monthlyReportData: null,
+      matrixReportData: null,
+      studentsData: null
+    };
+
+    // Escape teks untuk disisipkan ke innerHTML maupun atribut HTML (termasuk tanda ' dan ").
+    function escH_(t) {
+      return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    function getLocalDateTimeString(d = new Date()) {
+      const tzOffset = d.getTimezoneOffset() * 60000;
+      return new Date(d.getTime() - tzOffset).toISOString().split('T')[0];
+    }
+
+    const todayLocalStr = getLocalDateTimeString();
+
+    function isChromeBrowser() {
+      const ua = navigator.userAgent;
+      const isChromium = window.chrome !== null && typeof window.chrome !== "undefined";
+      const isOpera = ua.indexOf("OPR") > -1 || ua.indexOf("Opera") > -1;
+      const isEdge = ua.indexOf("Edg") > -1;
+      const isBrave = (navigator.brave && typeof navigator.brave.isBrave === "function");
+      const isUC = ua.indexOf("UCBrowser") > -1;
+      const isSamsung = ua.indexOf("SamsungBrowser") > -1;
+
+      return isChromium && !isOpera && !isEdge && !isBrave && !isUC && !isSamsung;
+    }
+
+    /* ===== STATUS KONEKSI (Revisi 97) =====
+       Membedakan 3 penyebab lambat agar pengguna tidak selalu mengira "server sibuk":
+       - Offline        : perangkat tidak punya internet.
+       - Lambat         : internet pengguna lambat (diukur dengan ping kecil ke situs ini sendiri, bukan ke Apps Script,
+                          ditambah navigator.connection bila browser mendukung).
+       - Server ramai   : internet lancar, tetapi 2 panggilan ringan ke Apps Script berturut-turut > 7 detik.
+       Ping hanya meminta header (HEAD) tiap 25 detik saat tab terlihat; tidak membawa data. */
+    const NetStatus = (() => {
+      let state = 'ok', rtts = [], srv = [], busyUntil = 0, probing = false, timer = null, lastMs = null;
+      const LABEL = { ok: 'Lancar', slow: 'Lambat', busy: 'Server ramai', offline: 'Offline' };
+      const SRV_LIGHT = { loginUser: 1, getPresensiConfig: 1, getStudentTodayAttendance: 1, getAvailableYears: 1, getThemeSettings: 1 };
+      const median = a => { const s = a.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+      function weakLink() {
+        const c = navigator.connection;
+        return !!(c && (/^(slow-2g|2g)$/.test(c.effectiveType || '') || (c.downlink > 0 && c.downlink < 0.4)));
+      }
+      function paint() {
+        const b = document.getElementById('netBadge'); if (!b) return;
+        b.className = 'net-badge net-' + state;
+        const t = b.querySelector('.net-text'); if (t) t.textContent = LABEL[state];
+        const sec = lastMs != null ? ' (±' + (lastMs / 1000).toFixed(1).replace('.', ',') + ' dtk)' : '';
+        b.title = ({
+          ok: 'Koneksi internet lancar. Ketuk untuk memeriksa ulang.',
+          slow: 'Koneksi internet Anda lambat' + sec + '. Proses mungkin butuh waktu lebih lama, mohon tunggu dan jangan tutup halaman.',
+          busy: 'Internet Anda lancar, tetapi server sedang ramai. Mohon tunggu sebentar.',
+          offline: 'Tidak ada koneksi internet. Periksa Wi-Fi / data seluler Anda.'
+        })[state];
+      }
+      function evaluate() {
+        let s = 'ok';
+        if (navigator.onLine === false) s = 'offline';
+        else if (weakLink() || (rtts.length && median(rtts) > 1800)) s = 'slow';
+        else if (Date.now() < busyUntil) s = 'busy';
+        state = s; paint();
+      }
+      function push(ms) { lastMs = ms >= 9999 ? null : ms; rtts.push(ms); if (rtts.length > 3) rtts.shift(); }
+      function probe() {
+        if (probing || location.protocol.indexOf('http') !== 0 || navigator.onLine === false) { evaluate(); return Promise.resolve(); }
+        probing = true;
+        const ctl = ('AbortController' in window) ? new AbortController() : null;
+        const t0 = performance.now(), to = setTimeout(() => { if (ctl) ctl.abort(); }, 8000);
+        return fetch('sw.js?_p=' + Date.now(), { method: 'HEAD', cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+          .then(() => push(performance.now() - t0))
+          .catch(() => push(9999))
+          .then(() => { clearTimeout(to); probing = false; evaluate(); });
+      }
+      function serverTiming(fn, ms) {
+        if (!SRV_LIGHT[fn]) return;
+        srv.push(ms); if (srv.length > 2) srv.shift();
+        if (srv.length === 2 && (srv[0] + srv[1]) / 2 > 7000) busyUntil = Date.now() + 60000;
+        else if (ms < 4000) { busyUntil = 0; srv = []; }
+        evaluate();
+      }
+      function retryText(action, a, m, tail) {
+        probe(); evaluate();   // pembaruan status untuk percobaan berikutnya
+        const n = ' (' + a + '/' + m + ')...' + (tail || '');
+        if (state === 'offline') return 'Tidak ada koneksi internet. ' + action + n;
+        if (state === 'slow') return 'Koneksi internet Anda lambat, ' + action + n;
+        return 'Server sedang ramai, ' + action + n;
+      }
+      function decorate(text) {
+        if (state === 'ok' || state === 'busy' || /koneksi|Server sedang/i.test(text)) return text;
+        return text + (state === 'offline' ? ' (tidak ada internet)' : ' (koneksi internet lambat)');
+      }
+      function check(manual) { return probe().then(() => { if (manual) paint(); }); }
+      function start() {
+        window.addEventListener('offline', evaluate);
+        window.addEventListener('online', () => { rtts = []; evaluate(); probe(); });
+        if (navigator.connection && navigator.connection.addEventListener) navigator.connection.addEventListener('change', evaluate);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) probe(); });
+        timer = setInterval(() => { if (!document.hidden) probe(); }, 25000);
+        evaluate(); probe();
+      }
+      return { start, check, retryText, decorate, serverTiming, get state() { return state; } };
+    })();
+    window.__netSrv = (fn, ms) => NetStatus.serverTiming(fn, ms);
+    NetStatus.start();
+
+    // REVISI 92: loading bar ringan (modul "Loading" dari E-Learning rev. 18).
+    // Tanda tangan showStatusBar(text) / hideStatusBar() tidak berubah, jadi semua pemanggil lama tetap jalan.
+    // Hanya 1 timer (tiap 300 ms) yang menyentuh 1 elemen; berhenti total saat tidak ada aktivitas.
+    const Loading = (() => {
+      const jobs = new Map(); let seq = 0, pct = 0, timer = null, hideT = null, failed = false;
+      const bar = document.getElementById('loadBar'), fill = document.getElementById('loadBarFill'),
+            box = document.getElementById('loadStatus'), txt = document.getElementById('loadStatusText'), spin = document.getElementById('loadSpin');
+      function paint() {
+        fill.style.width = pct + '%'; bar.setAttribute('aria-valuenow', Math.round(pct));
+        const labels = Array.from(jobs.values());
+        if (labels.length) txt.textContent = labels[labels.length - 1] + (labels.length > 1 ? ' (+' + (labels.length - 1) + ' lainnya)' : '');
+      }
+      function snap(w) {   // ubah lebar tanpa animasi (mencegah bar "mundur" saat direset)
+        bar.classList.add('snap'); fill.style.width = w + '%'; void fill.offsetWidth; bar.classList.remove('snap');
+      }
+      function reset() { bar.classList.remove('on', 'err'); box.classList.remove('err'); box.classList.add('lb-hide'); snap(0); pct = 0; failed = false; }
+      function start(label) {
+        const id = ++seq; jobs.set(id, label || 'Memproses…');
+        if (jobs.size === 1) {
+          clearTimeout(hideT); clearInterval(timer);
+          if (failed) reset(); else { failed = false; bar.classList.remove('err'); box.classList.remove('err'); }
+          pct = 8; snap(8);
+          bar.classList.add('on'); bar.setAttribute('aria-hidden', 'false'); box.classList.remove('lb-hide'); spin.classList.remove('lb-hide');
+          timer = setInterval(() => { pct += (92 - pct) * 0.07; paint(); }, 300);
+        }
+        paint(); return id;
+      }
+      function update(id, label) { if (jobs.has(id)) { jobs.set(id, label || 'Memproses…'); paint(); } }
+      function end(id, ok) {
+        if (!jobs.delete(id)) return;
+        if (ok === false) failed = true;
+        if (jobs.size) return paint();
+        clearInterval(timer); timer = null; pct = 100;
+        if (failed) { bar.classList.add('err'); box.classList.add('err'); spin.classList.add('lb-hide'); txt.textContent = 'Aktivitas gagal'; }
+        else txt.textContent = 'Selesai';
+        paint();
+        hideT = setTimeout(() => { reset(); bar.setAttribute('aria-hidden', 'true'); }, failed ? 1400 : 500);
+      }
+      return { start, update, end };
+    })();
+
+    // Pembungkus kompatibel untuk kode lama: satu aktivitas aktif pada satu waktu.
+    let statusJobId = null;
+    function showStatusBar(text) {
+      text = NetStatus.decorate(text || 'Tunggu sebentar');   // tambahkan keterangan bila internet lambat / offline
+      if (statusJobId === null) statusJobId = Loading.start(text || 'Tunggu sebentar');
+      else Loading.update(statusJobId, text || 'Tunggu sebentar');   // mis. "Server sedang ramai, mencoba lagi..."
+    }
+    function hideStatusBar(ok) {
+      if (statusJobId === null) return;
+      const id = statusJobId; statusJobId = null;
+      Loading.end(id, ok !== false);
+    }
+
+    /* =====================================================================
+     * PENANGANAN LONJAKAN AKSES (REVISI 54)
+     * runServer: memanggil fungsi Apps Script dengan
+     *  - failure handler (tidak ada lagi tombol yang "menggantung"),
+     *  - kirim ulang otomatis dengan jeda bertahap + acak (2s, 4s, 8s, 16s + 0-1,5s),
+     *  - batas waktu per percobaan (respons yang datang terlambat diabaikan),
+     *  - dukungan hasil server { retry: true } (mis. antrean lock penuh).
+     * Server bersifat idempoten, jadi kirim ulang tidak membuat data ganda.
+     * ===================================================================== */
+
+    /* ===== SESI SERVER (Revisi 86) =====
+       Setiap panggilan ke server (kecuali login & tema) otomatis membawa token sesi sebagai argumen pertama.
+       Bila server menjawab AUTH_EXPIRED, pengguna dikeluarkan dan diminta login ulang. */
+    const PUBLIC_SERVER_FNS = { loginUser: 1, getThemeSettings: 1 };
+    let authExpiring = false;
+    function authToken_() { return (currentUser && currentUser.token) ? currentUser.token : ''; }
+    function isAuthExpiredErr_(e) { return String((e && e.message) || e || '').indexOf('AUTH_EXPIRED') >= 0; }
+    function handleAuthExpired_() {
+      if (authExpiring || !currentUser) return;
+      authExpiring = true;
+      try { alert('Sesi login Anda telah berakhir. Silakan login kembali.'); } catch (x) {}
+      try { logout(); } catch (x) {}
+      authExpiring = false;
+    }
+    /* ===== CACHE PERANGKAT (Revisi 96) =====
+       Hanya untuk data LAPORAN baca-saja (rekap bulanan, rekap harian, laporan sekolah, daftar tahun).
+       Pola "stale-while-revalidate": data tersimpan langsung ditampilkan, lalu data terbaru dari server
+       diambil di latar belakang dan menggantikannya bila berbeda.
+       TIDAK pernah menyimpan: presensi hari ini, daftar input presensi, barcode, GPS, foto, login/sesi.
+       Setiap panggilan yang mengubah data (nama fungsi tidak berawalan "get") menghapus seluruh cache ini.
+       Cache dibersihkan saat logout, dipisah per pengguna, dan kedaluwarsa dalam 15 menit. */
+    const DEV_CACHE_FNS = { getWaliMonthlyReport: 1, getWaliMatrixMonthlyReport: 1, getKepsekReports: 1, getAvailableYears: 1 };
+    const DC_PREFIX = 'dc1:', DC_TTL = 15 * 60 * 1000, DC_MAX_ITEM = 450000, DC_MAX_ENTRIES = 24;
+    let dcGen = 0;   // naik setiap ada perubahan data -> respons lama yang terlambat tidak disimpan
+    function dcKeys_() {
+      const out = [];
+      try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf(DC_PREFIX) === 0) out.push(k); } } catch (e) {}
+      return out;
+    }
+    function dcClear_() { try { dcKeys_().forEach(k => localStorage.removeItem(k)); } catch (e) {} }
+    function dcKey_(fn, args) {
+      const u = currentUser || {};
+      return DC_PREFIX + (u.role || '') + '|' + (u.username || u.nisn || '') + '|' + fn + '|' + JSON.stringify(args);
+    }
+    function dcGet_(key) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const p = raw.indexOf('|');
+        const t = parseInt(raw.substring(0, p), 10);
+        if (!t || Date.now() - t > DC_TTL) { localStorage.removeItem(key); return null; }
+        return raw.substring(p + 1);
+      } catch (e) { return null; }
+    }
+    function dcPut_(key, str) {
+      try {
+        if (!str || str.length > DC_MAX_ITEM) return;
+        const keys = dcKeys_();
+        if (keys.length >= DC_MAX_ENTRIES) {   // buang yang paling lama
+          keys.map(k => ({ k: k, t: parseInt((localStorage.getItem(k) || '0').split('|')[0], 10) || 0 }))
+              .sort((a, b) => a.t - b.t).slice(0, keys.length - DC_MAX_ENTRIES + 1)
+              .forEach(o => localStorage.removeItem(o.k));
+        }
+        localStorage.setItem(key, Date.now() + '|' + str);
+      } catch (e) { dcClear_(); }   // kuota penuh -> kosongkan cache ini saja, aplikasi tetap jalan
+    }
+    function dcRun_(t, hasFail, p, a, okH) {
+      const key = dcKey_(p, a), gen0 = dcGen, cachedStr = dcGet_(key);
+      let served = false;
+      if (cachedStr) { try { okH(JSON.parse(cachedStr)); served = true; } catch (e) { console.error(e); } }
+      const fresh = res => {
+        let s = null;
+        try { s = (res && typeof res === 'object') ? JSON.stringify(res) : null; } catch (e) {}
+        if (s && dcGen === gen0 && res.success !== false) dcPut_(key, s);
+        if (served && s === cachedStr) return;   // sama persis -> tidak perlu menggambar ulang
+        okH(res);
+      };
+      const r = t.withSuccessHandler(fresh);
+      const base = hasFail ? r : r.withFailureHandler(e => { if (isAuthExpiredErr_(e)) handleAuthExpired_(); else console.error(e); });
+      return base[p](authToken_(), ...a);
+    }
+    function makeRunner_(r, hasFail, okH) {
+      return new Proxy(r, {
+        get(t, p) {
+          const v = t[p];
+          if (typeof v !== 'function') return v;
+          if (p === 'withFailureHandler') {
+            return h => makeRunner_(v.call(t, e => {
+              if (isAuthExpiredErr_(e)) { handleAuthExpired_(); return; }
+              if (typeof h === 'function') h(e);
+            }), true, okH);
+          }
+          if (p === 'withSuccessHandler') return (...a) => makeRunner_(v.apply(t, a), hasFail, a[0]);
+          if (p === 'withUserObject') return (...a) => makeRunner_(v.apply(t, a), hasFail, okH);
+          return (...a) => {
+            if (!PUBLIC_SERVER_FNS[p]) {
+              if (DEV_CACHE_FNS[p] && typeof okH === 'function' && currentUser) return dcRun_(t, hasFail, p, a, okH);
+              if (!/^get/.test(p)) { dcGen++; dcClear_(); }   // ada perubahan data -> cache laporan perangkat dibuang
+            }
+            const base = hasFail ? t : t.withFailureHandler(e => { if (isAuthExpiredErr_(e)) handleAuthExpired_(); else console.error(e); });
+            return PUBLIC_SERVER_FNS[p] ? base[p](...a) : base[p](authToken_(), ...a);
+          };
+        }
+      });
+    }
+    function gsr() { return makeRunner_(google.script.run, false); }
+
+    function runServer(fnName, args, opts) {
+      opts = opts || {};
+      const maxRetry = (opts.retries !== undefined) ? opts.retries : 4;
+      const baseDelay = opts.baseDelay || 2000;
+      const attemptTimeout = opts.timeout || 45000;
+
+      return new Promise((resolve, reject) => {
+        let attempt = 0;
+
+        const scheduleRetry = (reason) => {
+          const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), 16000) + Math.floor(Math.random() * 1500);
+          if (typeof opts.onRetry === 'function') {
+            try { opts.onRetry(attempt, maxRetry, delay, reason); } catch (e) {}
+          }
+          setTimeout(tryOnce, delay);
+        };
+
+        const tryOnce = () => {
+          attempt++;
+          let settled = false;
+
+          const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            if (attempt <= maxRetry) scheduleRetry('timeout');
+            else reject(new Error('Koneksi ke server terlalu lama (timeout).'));
+          }, attemptTimeout);
+
+          const guard = (fn) => (val) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            fn(val);
+          };
+
+          try {
+            gsr()
+              .withSuccessHandler(guard(res => {
+                if (res && res.retry === true && attempt <= maxRetry) {
+                  scheduleRetry(res.message);
+                  return;
+                }
+                if (res && typeof res === 'object' && !Array.isArray(res)) res.__attempts = attempt;
+                resolve(res);
+              }))
+              .withFailureHandler(guard(err => {
+                if (attempt <= maxRetry) scheduleRetry(err && err.message ? err.message : String(err));
+                else reject(err);
+              }))[fnName].apply(null, args || []);
+          } catch (e) {
+            settled = true;
+            clearTimeout(timer);
+            reject(e);
+          }
+        };
+
+        tryOnce();
+      });
+    }
+
+    // Pengaturan presensi (browser, fake GPS, lokasi sekolah) diambil 1x lewat 1 panggilan,
+    // disimpan di browser 3 menit, dan dimuat lebih awal saat dashboard siswa dibuka.
+    let presensiConfig = null;
+    let presensiConfigAt = 0;
+    const PRESENSI_CONFIG_TTL_MS = 3 * 60 * 1000;
+    let presensiSubmitting = false;
+    let loginBusy = false;
+
+    // --- Jaring pengaman TERAKHIR: kalau proses kirim presensi sedang berjalan
+    //     (presensiSubmitting = true) lalu terjadi error tak terduga yang lolos
+    //     dari semua try/catch di atas, jangan biarkan siswa melihat loading
+    //     menghilang tanpa penjelasan. Selalu beri pesan + kembalikan tombol. ---
+    function recoverStuckSubmit(sumberError) {
+      if (!presensiSubmitting) return;
+      console.error('Presensi macet karena error tak terduga:', sumberError);
+      presensiSubmitting = false;
+      hideStatusBar();
+      const btn = document.getElementById('btnSubmitStudent');
+      if (btn) resetSubmitButton(btn);
+      alert('Terjadi kendala teknis tak terduga saat mengirim presensi. Silakan coba tekan tombol kirim sekali lagi. Jika masih gagal, laporkan ke admin/wali kelas.');
+    }
+    window.addEventListener('unhandledrejection', function (ev) {
+      recoverStuckSubmit(ev && ev.reason);
+    });
+    window.addEventListener('error', function (ev) {
+      recoverStuckSubmit(ev && ev.message);
+    });
+
+    function fetchPresensiConfig(onRetry) {
+      if (presensiConfig && (Date.now() - presensiConfigAt) < PRESENSI_CONFIG_TTL_MS) {
+        return Promise.resolve(presensiConfig);
+      }
+      return runServer('getPresensiConfig', [], { retries: 3, onRetry: onRetry }).then(cfg => {
+        presensiConfig = cfg;
+        presensiConfigAt = Date.now();
+        applyPjjVisibility(!!cfg && cfg.aktifPjj === true);
+        return cfg;
+      });
+    }
+    
+    window.addEventListener('DOMContentLoaded', () => {
+      syncThemeFromServer();
+      const dateInputEl = document.getElementById('attendanceDate');
+      if (dateInputEl) dateInputEl.value = todayLocalStr;
+      
+      const studentDateEl = document.getElementById('studentAttendanceDate');
+      if (studentDateEl) studentDateEl.value = todayLocalStr;
+
+      try {
+        const savedUser = loadSavedSession();
+        if (savedUser) {
+          currentUser = savedUser;
+          if (currentUser && currentUser.role) {
+            applyUserSession(currentUser);
+          }
+        }
+      } catch (err) {
+        clearSavedSession();
+      }
+    });
+
+    /* ===== SESI LOGIN =====
+       Admin  : disimpan di sessionStorage -> tetap login saat halaman di-refresh,
+                tetapi hilang saat tab/aplikasi ditutup (wajib login ulang).
+       Lainnya: tetap di localStorage (login bertahan seperti semula). */
+    function saveSession(user) {
+      try {
+        if (user && user.role === 'Admin') {
+          localStorage.removeItem('absensi_user');
+          sessionStorage.setItem('absensi_user', JSON.stringify(user));
+        } else {
+          sessionStorage.removeItem('absensi_user');
+          localStorage.setItem('absensi_user', JSON.stringify(user));
+        }
+      } catch (e) {}
+    }
+    function clearSavedSession() {
+      try { sessionStorage.removeItem('absensi_user'); } catch (e) {}
+      try { localStorage.removeItem('absensi_user'); } catch (e) {}
+    }
+    function loadSavedSession() {
+      let raw = null;
+      try { raw = sessionStorage.getItem('absensi_user'); } catch (e) {}
+      if (!raw) {
+        try { raw = localStorage.getItem('absensi_user'); } catch (e) {}
+        if (raw) {
+          try {
+            const u = JSON.parse(raw);
+            // Sesi Admin lama di localStorage tidak dipulihkan lagi
+            if (u && u.role === 'Admin') { localStorage.removeItem('absensi_user'); return null; }
+          } catch (e) { return null; }
+        }
+      }
+      if (!raw || raw === 'undefined' || raw === 'null') return null;
+      return JSON.parse(raw);
+    }
+
+    function loadDynamicYears() {
+      if (typeof google === 'undefined' || !google.script || !google.script.run) return;
+      gsr().withSuccessHandler(years => {
+        let html = `<option value="ALL">Semua Tahun</option>`;
+        const currentY = new Date().getFullYear().toString();
+        years.forEach(y => { html += `<option value="${y}">${y}</option>`; });
+        ['filterKepsekYear', 'waliReportYear', 'matrixReportYear', 'filterWaliPhotoYear', 'filterGlobalPhotoYear', 'filterKetYear', 'filterWaliKetYear'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) { el.innerHTML = html; el.value = currentY; }
+        });
+      }).getAvailableYears();
+    }
+
+    // Bulan awal untuk filter bukti foto (tidak ada lagi opsi "Semua Bulan").
+    function initFilterBulanWajib() {
+      const m = String(new Date().getMonth() + 1).padStart(2, '0');
+      ['filterWaliPhotoMonth', 'filterGlobalPhotoMonth', 'filterKetMonth', 'filterWaliKetMonth'].forEach(id => { const el = document.getElementById(id); if (el) el.value = m; });
+    }
+    initFilterBulanWajib();
+
+    function applyUserSession(user) {
+      refreshPjjFlag();
+      window._matrixFilterInit = false;
+      window._sekRekapInit = false;
+      window._sekRekapData = null;
+      // Daftar tahun hanya dibutuhkan panel admin/wali/kepsek; siswa tidak perlu (menghindari baca sheet saat lonjakan).
+      if (user.role !== 'Siswa' && user.role !== 'Barcode') loadDynamicYears();
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('userInfo').classList.remove('hidden');
+      document.getElementById('userNameDisplay').innerText = user.nama;
+      document.getElementById('userRoleBadge').innerText = user.role;
+      var avatarEl = document.getElementById('userAvatarInitial');
+      if (avatarEl) avatarEl.innerText = (user.nama || '?').trim().charAt(0).toUpperCase();
+
+      if (user.role === 'Admin') {
+        document.getElementById('adminDashboard').classList.remove('hidden');
+        switchAdminTab('users');
+        loadAdminUsers();
+      } else if (user.role === 'Guru Wali Kelas' || user.role === 'Sekretaris') {
+        document.getElementById('waliDashboard').classList.remove('hidden');
+        const dateInputEl = document.getElementById('attendanceDate');
+        if (dateInputEl) dateInputEl.value = getLocalDateTimeString();
+
+        if (user.role === 'Sekretaris') {
+          document.getElementById('panelTitleText').innerText = `Panel Sekretaris Kelas`;
+          document.getElementById('waliInfoTag').innerText = `Sekretaris Kelas ${user.kelas} - ${user.jurusan} (Input Presensi Harian)`;
+          ['tabRekapBtn', 'tabMatrixBtn', 'tabBuktiFotoBtn', 'tabKeteranganBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+          });
+          const sekRekapBtn = document.getElementById('tabRekapAbsensiBtn');
+          if (sekRekapBtn) sekRekapBtn.style.display = 'inline-block';
+          dateInputEl.setAttribute('readonly', true);
+          dateInputEl.classList.add('bg-slate-100', 'cursor-not-allowed');
+          dateInputEl.style.pointerEvents = 'none';
+        } else {
+          document.getElementById('panelTitleText').innerText = `Panel Guru Wali Kelas`;
+          document.getElementById('waliInfoTag').innerText = `Wali Kelas ${user.kelas} - ${user.jurusan}`;
+          ['tabRekapBtn', 'tabMatrixBtn', 'tabBuktiFotoBtn', 'tabKeteranganBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'inline-block';
+          });
+          ['tabBarcodeBtn', 'tabVerifBarcodeBtn'].forEach(id => {   // tampil/tidaknya mengikuti saklar Scan Barcode di panel admin
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+          });
+          const sekRekapBtnWali = document.getElementById('tabRekapAbsensiBtn');
+          if (sekRekapBtnWali) sekRekapBtnWali.style.display = 'none';
+          dateInputEl.removeAttribute('readonly');
+          dateInputEl.classList.remove('bg-slate-100', 'cursor-not-allowed');
+          dateInputEl.style.pointerEvents = 'auto';
+        }
+
+        const wu = document.getElementById('wrapUpdateSemua');
+        if (wu) wu.classList.toggle('hidden', user.role !== 'Guru Wali Kelas');   // Update Semua: khusus wali kelas
+        switchWaliTab('input');
+        loadWaliData();
+      } else if (user.role === 'Barcode') {
+        document.getElementById('barcodeDashboard').classList.remove('hidden');
+        startBarcodeTab();
+        enterBarcodeFullscreen();
+      } else if (user.role === 'Siswa') {
+        document.getElementById('studentDashboard').classList.remove('hidden');
+        loadStudentDashboardInfo(user);
+      } else if (user.role === 'Kepala Sekolah' || user.role === 'Wakil Kepala Sekolah') {
+        document.getElementById('kepsekDashboard').classList.remove('hidden');
+        const currentMonthStr = String(new Date().getMonth() + 1).padStart(2, '0');
+        document.getElementById('filterKepsekMonth').value = currentMonthStr;
+        document.getElementById('filterKepsekYear').value = new Date().getFullYear().toString();
+        document.getElementById('filterKepsekGrade').value = 'X';
+        document.getElementById('filterKepsekMajor').value = 'AKL';
+        switchKepsekTab('matrix');
+      }
+    }
+
+    function handleLogin(e) {
+      e.preventDefault();
+      if (loginBusy) return;
+      loginBusy = true;
+
+      const submitBtn = document.querySelector('#loginForm button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+
+      showStatusBar('Memeriksa kredensial login...', 30);
+      const u = document.getElementById('loginUsername').value.trim();
+      const p = document.getElementById('loginPassword').value.trim();
+
+      runServer('loginUser', [u, p], {
+        retries: 3,
+        onRetry: (a, m) => showStatusBar(NetStatus.retryText('mencoba lagi', a, m), 30)
+      }).then(res => {
+        hideStatusBar();
+        if (res && res.success) {
+          currentUser = res.user;
+          saveSession(currentUser);
+          applyUserSession(currentUser);
+        } else {
+          alert(res ? res.message : 'Login gagal!');
+        }
+      }, err => {
+        hideStatusBar();
+        alert('Terjadi kesalahan koneksi ke server. Silakan coba lagi beberapa saat lagi. (' + ((err && err.message) || err) + ')');
+      }).finally(() => {
+        loginBusy = false;
+        if (submitBtn) submitBtn.disabled = false;
+      });
+    }
+
+    function logout() {
+      try { if (currentUser && currentUser.token && !authExpiring) gsr().withFailureHandler(function () {}).logoutUser(); } catch (e) {}
+      if (currentUser && currentUser.role === 'Siswa') resetStudentPresensiState();   // hanya akun siswa
+      stopBarcodeTab();
+      if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      clearSavedSession();
+      dcGen++; dcClear_();   // cache laporan di perangkat tidak boleh terbawa ke akun lain
+      currentUser = null;
+      appCache = { attendanceData: null, monthlyReportData: null, matrixReportData: null, studentsData: null };
+      document.getElementById('userInfo').classList.add('hidden');
+      ['adminDashboard', 'waliDashboard', 'studentDashboard', 'kepsekDashboard', 'barcodeDashboard'].forEach(id => {
+        const el = document.getElementById(id);
+        if(el) el.classList.add('hidden');
+      });
+      document.getElementById('loginUsername').value = '';
+      document.getElementById('loginPassword').value = '';
+      document.getElementById('loginSection').classList.remove('hidden');
+    }
+
+    /* ===== SELFIE LANGSUNG DARI KAMERA (lewat pembungkus; tanpa pilihan galeri) ===== */
+    let selfieAck = false, selfiePending = false;
+    function setSelfieFromDataUrl(d) {
+      capturedSelfieBase64 = d;
+      const preview = document.getElementById('selfiePreview');
+      preview.src = d;
+      preview.classList.remove('hidden');
+      document.getElementById('cameraPlaceholder').classList.add('hidden');
+      setTimeout(autoOpenBarcodeScanner, 500);
+    }
+    window.addEventListener('message', e => {
+      if (e.source !== window.top) return;
+      const d = e.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'SP_SELFIE_ACK') selfieAck = true;
+      else if (d.type === 'SP_SELFIE_RESULT') { selfiePending = false; if (typeof d.dataUrl === 'string' && d.dataUrl.indexOf('data:image/jpeg') === 0) setSelfieFromDataUrl(d.dataUrl); }
+      else if (d.type === 'SP_SELFIE_ERROR') { selfiePending = false; alert(String(d.message || 'Kamera tidak bisa dibuka.')); }
+      else if (d.type === 'SP_SELFIE_CANCEL') selfiePending = false;
+    });
+    // Status selain Hadir (PKL / Izin / Sakit / PJJ): selfie wajib kamera belakang + keterangan, tidak terikat panel admin.
+    function escHtmlKet_(t) { return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    /* ================= VIEWER FOTO DALAM APLIKASI (tanpa akun Google Drive) ================= */
+    function bukaFoto(url) {
+      if (!url) return;
+      let ov = document.getElementById('fotoViewerOverlay');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'fotoViewerOverlay';
+        ov.className = 'fixed inset-0 z-[200] bg-black/85 flex items-center justify-center p-3';
+        ov.innerHTML = '<div class="relative w-full max-w-3xl max-h-full flex flex-col items-center">' +
+          '<button type="button" id="fotoViewerClose" class="absolute -top-1 right-0 z-10 w-9 h-9 rounded-full bg-white/90 text-slate-800 font-bold shadow" aria-label="Tutup">&times;</button>' +
+          '<div id="fotoViewerBody" class="w-full flex items-center justify-center min-h-[200px] text-white text-sm"></div></div>';
+        document.body.appendChild(ov);
+        const tutup = () => { ov.classList.add('hidden'); document.getElementById('fotoViewerBody').innerHTML = ''; };
+        ov.addEventListener('click', e => { if (e.target === ov) tutup(); });
+        document.getElementById('fotoViewerClose').addEventListener('click', tutup);
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && !ov.classList.contains('hidden')) tutup(); });
+      }
+      const body = document.getElementById('fotoViewerBody');
+      ov.classList.remove('hidden');
+      body.innerHTML = '<span><i class="fas fa-spinner fa-spin mr-2"></i>Memuat foto...</span>';
+      gsr().withSuccessHandler(res => {
+        if (!res || !res.success) {
+          body.innerHTML = '<span class="bg-white/10 rounded-lg px-4 py-3 text-center">' + escHtmlKet_((res && res.message) || 'Foto gagal dimuat.') + '</span>';
+          return;
+        }
+        body.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = res.data;
+        img.alt = 'Foto presensi';
+        img.className = 'max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain bg-white';
+        body.appendChild(img);
+      }).withFailureHandler(err => {
+        body.innerHTML = '<span class="bg-white/10 rounded-lg px-4 py-3 text-center">Foto gagal dimuat. Periksa koneksi lalu coba lagi.</span>';
+      }).getFotoData(url);
+    }
+    // Sel kolom Lokasi (tab Keterangan): hanya koordinat valid "lat,lng" yang dijadikan tautan Google Maps.
+    function lokasiCell_(v) {
+      const m = /^(-?\d{1,3}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)$/.exec(String(v || '').trim());
+      if (!m) return '<span class="text-xs text-slate-400 italic">Lokasi tidak tersedia</span>';
+      return `<a href="https://www.google.com/maps?q=${m[1]},${m[2]}" target="_blank" rel="noopener" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm inline-flex items-center"><i class="fas fa-location-dot mr-1"></i> Lihat Peta</a><div class="text-[10px] font-mono text-slate-400 mt-1">${m[1]}, ${m[2]}</div>`;
+    }
+    function getStudentStatus() {
+      const el = document.querySelector('input[name="studentStatusRadio"]:checked');
+      return el ? el.value : 'Hadir';
+    }
+    function isStatusBukti() { return getStudentStatus() !== 'Hadir'; }
+    /* ===== KAMERA BELAKANG LANGSUNG (PKL/Izin/Sakit/PJJ): kamera dibuka di halaman, foto diambil dari tampilan kamera, tanpa galeri ===== */
+    let rearStream = null, rearFacing = 'environment';
+    function rearFallback(pesan) {
+      // Cadangan bila browser/halaman tidak mengizinkan kamera langsung: input kamera biasa (dengan pemeriksaan foto baru di handleCameraFileSelect)
+      alert(pesan + '\n\nSebagai cadangan, kamera bawaan HP akan dibuka. Pastikan memotret langsung, bukan memilih dari galeri.');
+      document.getElementById('cameraFileInputRear').click();
+    }
+    function startRearCamera() {
+      if (rearStream || selfiePending) return;
+      rearFacing = 'environment';
+      // Jalur utama: minta halaman pembungkus (punya izin kamera) membuka KAMERA BELAKANG, sama seperti selfie Hadir.
+      if (window.top !== window) {
+        selfieAck = false;
+        try { window.top.postMessage({ type: 'SP_SELFIE_REQUEST', facing: 'environment' }, '*'); }
+        catch (e) { return startRearCameraLocal(); }
+        setTimeout(() => { if (selfieAck) selfiePending = true; else startRearCameraLocal(); }, 1200);
+        return;
+      }
+      startRearCameraLocal();
+    }
+    function startRearCameraLocal() {
+      if (rearStream) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return rearFallback('Halaman ini belum bisa membuka kamera langsung.');
+      const opt = { video: { facingMode: { ideal: rearFacing }, width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false };
+      navigator.mediaDevices.getUserMedia(opt)
+        .catch(err => (err && (err.name === 'OverconstrainedError' || err.name === 'NotFoundError'))
+          ? navigator.mediaDevices.getUserMedia({ video: true, audio: false }) : Promise.reject(err))
+        .then(stream => {
+          rearStream = stream;
+          const v = document.getElementById('rearVideo');
+          v.muted = true; v.setAttribute('playsinline', ''); v.srcObject = stream;
+          document.getElementById('rearCameraModal').classList.remove('hidden');
+          const p = v.play(); if (p && p.catch) p.catch(() => {});
+        })
+        .catch(err => {
+          const n = (err && err.name) || '';
+          rearFallback((n === 'NotAllowedError' || n === 'SecurityError') ? 'Izin kamera ditolak atau diblokir.' : 'Kamera belakang tidak bisa dibuka.');
+        });
+    }
+    function flipRearCamera() {
+      if (!rearStream) return;
+      rearStream.getTracks().forEach(t => t.stop()); rearStream = null;
+      rearFacing = (rearFacing === 'environment') ? 'user' : 'environment';
+      startRearCameraLocal();
+    }
+    function closeRearCamera() {
+      if (rearStream) { rearStream.getTracks().forEach(t => t.stop()); rearStream = null; }
+      const m = document.getElementById('rearCameraModal'); if (m) m.classList.add('hidden');
+      const v = document.getElementById('rearVideo'); if (v) v.srcObject = null;
+    }
+    function captureRearPhoto() {
+      const v = document.getElementById('rearVideo');
+      if (!rearStream || !v.videoWidth) { alert('Kamera belum siap. Tunggu sebentar lalu coba lagi.'); return; }
+      try {
+        const maxDim = 900;
+        let w = v.videoWidth, hgt = v.videoHeight;
+        const k = Math.min(1, maxDim / Math.max(w, hgt));
+        w = Math.round(w * k); hgt = Math.round(hgt * k);
+        const c = document.createElement('canvas'); c.width = w; c.height = hgt;
+        c.getContext('2d').drawImage(v, 0, 0, w, hgt);
+        const dataUrl = c.toDataURL('image/jpeg', 0.6);
+        if (!dataUrl || dataUrl.length < 100) throw new Error('kosong');
+        capturedSelfieBase64 = dataUrl;
+        const preview = document.getElementById('selfiePreview');
+        preview.src = dataUrl; preview.classList.remove('hidden');
+        document.getElementById('cameraPlaceholder').classList.add('hidden');
+        closeRearCamera();
+      } catch (e) {
+        alert('Foto gagal diambil. Silakan coba lagi.');
+      }
+    }
+    function onStudentStatusChange() {
+      closeRearCamera();
+      resetSelfieCaptureUI();   // foto lama (kamera depan/belakang) tidak boleh terbawa saat status diganti
+      selfiePending = false;
+      // Hasil cek GPS TIDAK boleh terbawa antar status (cek PKL/Izin/Sakit/PJJ tidak memeriksa radius sekolah).
+      gpsCheckedOk = false; gpsCheckedAt = 0; gpsCheckedMode = '';
+      setGpsStatusUI('idle', 'Lokasi belum dicek', isStatusBukti()
+        ? 'Wajib: tekan tombol di bawah dan pastikan lokasi GPS terbaca sebelum bisa mengirim presensi.'
+        : 'Wajib: tekan tombol di bawah dan pastikan status GPS "OK" sebelum bisa mengirim presensi.');
+      applyFiturPresensi();
+    }
+    function startSelfie() {
+      if (isStatusBukti()) { startRearCamera(); return; }
+      if (selfiePending) return;
+      const fallback = () => document.getElementById('cameraFileInput').click();
+      if (window.top === window) return fallback();
+      selfieAck = false;
+      try { window.top.postMessage({ type: 'SP_SELFIE_REQUEST' }, '*'); } catch (e) { return fallback(); }
+      setTimeout(() => { if (selfieAck) selfiePending = true; else fallback(); }, 1200);
+    }
+
+    function handleCameraFileSelect(e) {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+
+      if (file.type && file.type.indexOf('image') === -1) {
+        alert('File yang dipilih bukan foto/gambar. Silakan gunakan tombol kamera untuk memotret ulang.');
+        return;
+      }
+
+      const MAX_FILE_MB = 30;
+      if (file.size > MAX_FILE_MB * 1024 * 1024) {
+        alert('Ukuran foto terlalu besar (' + (file.size / (1024 * 1024)).toFixed(1) + ' MB).\nSilakan turunkan resolusi kamera di pengaturan HP Anda, lalu coba lagi.');
+        return;
+      }
+
+      // Foto dari galeri (lama) ditolak: selfie harus diambil langsung dari kamera saat ini.
+      if (file.lastModified && (Date.now() - file.lastModified) > 5 * 60 * 1000) {
+        alert('Foto selfie harus diambil langsung dari kamera saat ini, bukan dari galeri. Silakan potret ulang.');
+        return;
+      }
+
+      // Cadangan kamera belakang: foto harus benar-benar baru (maks. 90 detik) agar tidak bisa dari galeri.
+      if (isStatusBukti() && (!file.lastModified || (Date.now() - file.lastModified) > 90 * 1000)) {
+        alert('Foto bukti harus diambil langsung dari kamera saat ini, bukan dari galeri. Silakan potret ulang.');
+        return;
+      }
+
+      showStatusBar('Memproses foto selfie...', 40);
+
+      let finished = false;
+      const stuckTimer = setTimeout(function() {
+        if (finished) return;
+        finished = true;
+        hideStatusBar();
+        alert('Proses foto selfie terlalu lama di perangkat ini.\n\nSilakan coba lagi dengan menekan tombol "Buka Kamera / Ambil Foto Selfie", atau turunkan resolusi kamera HP Anda.');
+        resetSelfieCaptureUI();
+      }, 25000);
+
+      const finishWithError = function(pesan) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(stuckTimer);
+        hideStatusBar();
+        alert(pesan);
+        resetSelfieCaptureUI();
+      };
+
+      // Gambar sumber -> canvas kecil -> JPEG base64. Mengembalikan true kalau berhasil.
+      const renderToSelfie = function(source, srcW, srcH) {
+        try {
+          const maxDim = 400;
+          let width = srcW, height = srcH;
+          if (width > height && width > maxDim) {
+            height = Math.round(height * maxDim / width);
+            width = maxDim;
+          } else if (height > maxDim) {
+            width = Math.round(width * maxDim / height);
+            height = maxDim;
+          }
+          if (!width || !height) return false;
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(source, 0, 0, width, height);
+
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+          if (!dataUrl || dataUrl.length < 100) return false;
+
+          capturedSelfieBase64 = dataUrl;
+          finished = true;
+          clearTimeout(stuckTimer);
+
+          const preview = document.getElementById('selfiePreview');
+          preview.src = capturedSelfieBase64;
+          preview.classList.remove('hidden');
+          document.getElementById('cameraPlaceholder').classList.add('hidden');
+          hideStatusBar();
+          setTimeout(autoOpenBarcodeScanner, 500);
+          return true;
+        } catch (err) {
+          console.error('Gagal render foto ke canvas:', err);
+          return false;
+        }
+      };
+
+      const pesanGagal = 'Foto tidak bisa diproses oleh browser di HP ini. Coba: (1) tutup aplikasi lain agar memori lega, (2) turunkan resolusi kamera depan di pengaturan Kamera HP, lalu (3) potret ulang.';
+
+      // Cadangan 3: cara lama (FileReader + data URL)
+      const tryDataUrl = function() {
+        if (finished) return;
+        try {
+          const reader = new FileReader();
+          reader.onerror = function() { finishWithError(pesanGagal); };
+          reader.onload = function(evt) {
+            const img = new Image();
+            img.onerror = function() { finishWithError(pesanGagal); };
+            img.onload = function() {
+              if (!renderToSelfie(img, img.naturalWidth || img.width, img.naturalHeight || img.height)) {
+                finishWithError(pesanGagal);
+              }
+            };
+            img.src = evt.target.result;
+          };
+          reader.readAsDataURL(file);
+        } catch (err) {
+          finishWithError(pesanGagal);
+        }
+      };
+
+      // Cadangan 2: object URL (tanpa string base64 besar)
+      const tryObjectUrl = function() {
+        if (finished) return;
+        let url = null;
+        try {
+          url = URL.createObjectURL(file);
+        } catch (err) {
+          tryDataUrl();
+          return;
+        }
+        const img = new Image();
+        img.onerror = function() {
+          try { URL.revokeObjectURL(url); } catch (x) {}
+          tryDataUrl();
+        };
+        img.onload = function() {
+          const ok = renderToSelfie(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
+          try { URL.revokeObjectURL(url); } catch (x) {}
+          if (!ok) tryDataUrl();
+        };
+        img.src = url;
+      };
+
+      const useBitmap = function(bmp) {
+        const ok = renderToSelfie(bmp, bmp.width, bmp.height);
+        if (bmp.close) { try { bmp.close(); } catch (x) {} }
+        return ok;
+      };
+
+      // Cadangan 1b: createImageBitmap tanpa opsi resize
+      const tryBitmapPlain = function() {
+        if (finished) return;
+        createImageBitmap(file).then(function(bmp) {
+          if (!useBitmap(bmp)) tryObjectUrl();
+        }).catch(function() { tryObjectUrl(); });
+      };
+
+      // Utama: createImageBitmap DENGAN resize saat decode. Foto besar (mis. 50MP)
+      // langsung diperkecil ke ~400px sehingga tidak pernah dimuat penuh ke memori.
+      if (typeof createImageBitmap === 'function') {
+        createImageBitmap(file, { resizeWidth: 400, resizeQuality: 'medium' }).then(function(bmp) {
+          if (!useBitmap(bmp)) tryBitmapPlain();
+        }).catch(function(err) {
+          console.warn('createImageBitmap (resize) gagal, coba cadangan:', err);
+          tryBitmapPlain();
+        });
+      } else {
+        tryObjectUrl();
+      }
+    }
+
+    function resetSelfieCaptureUI() {
+      capturedSelfieBase64 = null;
+      const preview = document.getElementById('selfiePreview');
+      if (preview) { preview.classList.add('hidden'); preview.removeAttribute('src'); }
+      const ph = document.getElementById('cameraPlaceholder');
+      if (ph) ph.classList.remove('hidden');
+    }
+
+    /* =====================================================================
+     * TOMBOL "REFRESH GPS" pada laman presensi siswa.
+     * Ini pengecekan MANDIRI di sisi siswa saja (belum kirim data apa pun ke
+     * server) — supaya siswa bisa tahu lebih awal kalau GPS-nya belum aktif/
+     * izinnya belum diberikan, SEBELUM menekan tombol "Kirim Presensi".
+     * Pengecekan radius sekolah yang sesungguhnya tetap dilakukan ulang oleh
+     * server saat presensi benar-benar dikirim (bukan mengandalkan hasil di sini).
+     * ===================================================================== */
+    function setGpsStatusUI(state, title, desc) {
+      const icon = document.getElementById('gpsStatusIcon');
+      const titleEl = document.getElementById('gpsStatusTitle');
+      const descEl = document.getElementById('gpsStatusDesc');
+      if (!icon || !titleEl || !descEl) return;
+
+      const palettes = {
+        loading: { box: 'w-9 h-9 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center flex-none', icon: 'fa-spinner fa-spin' },
+        ok:      { box: 'w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center flex-none', icon: 'fa-circle-check' },
+        warn:    { box: 'w-9 h-9 rounded-full bg-secondary-100 text-secondary-700 flex items-center justify-center flex-none', icon: 'fa-triangle-exclamation' },
+        error:   { box: 'w-9 h-9 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center flex-none', icon: 'fa-circle-xmark' },
+        idle:    { box: 'w-9 h-9 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center flex-none', icon: 'fa-location-dot' }
+      };
+      const p = palettes[state] || palettes.idle;
+      icon.className = p.box;
+      icon.innerHTML = '<i class="fas ' + p.icon + '"></i>';
+      titleEl.textContent = title;
+      descEl.textContent = desc;
+    }
+
+    function refreshGpsStatus() {
+      // Setiap kali proses cek dimulai ulang, anggap belum lolos sampai terbukti OK di bawah.
+      gpsCheckedOk = false;
+      gpsCheckedMode = '';
+      const modeNow = isStatusBukti() ? 'bukti' : 'hadir';
+      const modeBerubah = function () { return (isStatusBukti() ? 'bukti' : 'hadir') !== modeNow; };   // status diganti saat GPS masih dicari
+
+      if (!navigator.geolocation) {
+        setGpsStatusUI('error', 'GPS tidak didukung', 'Browser di HP ini tidak mendukung deteksi lokasi. Coba gunakan Chrome/Firefox/Safari.');
+        return;
+      }
+
+      const btn = document.getElementById('btnRefreshGps');
+      if (btn) { btn.disabled = true; btn.classList.add('opacity-60'); }
+      setGpsStatusUI('loading', 'Mencari lokasi GPS...', 'Mohon tunggu sebentar, pastikan GPS di HP Anda sudah aktif.');
+
+      navigator.geolocation.getCurrentPosition(function (position) {
+        if (btn) { btn.disabled = false; btn.classList.remove('opacity-60'); }
+        if (modeBerubah()) return;   // hasil untuk status sebelumnya dibuang
+        const accuracy = Math.round(position.coords.accuracy || 0);
+
+        if (modeNow === 'bukti') {
+          // PKL/Izin/Sakit/PJJ: cukup memastikan lokasi terbaca. Radius sekolah tidak berlaku (siswa PKL berada di luar sekolah).
+          gpsCheckedOk = true;
+          gpsCheckedAt = Date.now();
+          gpsCheckedMode = 'bukti';
+          setGpsStatusUI('ok', 'Lokasi GPS terdeteksi', 'Akurasi: ' + accuracy + ' m. Radius sekolah tidak berlaku untuk status ini. Anda siap mengirim presensi.');
+          return;
+        }
+
+        fetchPresensiConfig().then(cfg => {
+          if (modeBerubah()) return;
+          cfg = cfg || {};
+          const schoolLat = parseFloat(cfg.lat);
+          const schoolLon = parseFloat(cfg.lng);
+          const maxRadiusMeters = parseFloat(cfg.radius);
+          let jarakTxt = '';
+          let dalamRadius = true;
+
+          if (!isNaN(schoolLat) && !isNaN(schoolLon)) {
+            const distance = Math.round(calculateDistance(position.coords.latitude, position.coords.longitude, schoolLat, schoolLon));
+            dalamRadius = !isNaN(maxRadiusMeters) ? (distance <= maxRadiusMeters) : true;
+            jarakTxt = ' • Jarak dari sekolah: ' + distance + ' m' + (!isNaN(maxRadiusMeters) ? ' (maks. ' + maxRadiusMeters + ' m)' : '');
+          }
+
+          if (dalamRadius) {
+            gpsCheckedOk = true;
+            gpsCheckedAt = Date.now();
+            gpsCheckedMode = 'hadir';
+            setGpsStatusUI('ok', 'Lokasi GPS terdeteksi', 'Akurasi: ' + accuracy + ' m' + jarakTxt + '. Anda siap mengirim presensi.');
+          } else {
+            gpsCheckedOk = false;
+            setGpsStatusUI('warn', 'Lokasi terdeteksi, tapi di luar radius sekolah', 'Akurasi: ' + accuracy + ' m' + jarakTxt + '. Dekati area sekolah lalu refresh GPS lagi.');
+          }
+        }).catch(() => {
+          // Pengaturan gagal dimuat -> jarak ke sekolah tidak bisa dipastikan, jangan diloloskan otomatis.
+          gpsCheckedOk = false;
+          setGpsStatusUI('warn', 'Lokasi GPS terdeteksi, tapi belum bisa diverifikasi', 'Akurasi: ' + accuracy + ' m. Jarak ke sekolah belum bisa dicek karena gagal memuat pengaturan. Coba Refresh GPS lagi.');
+        });
+
+      }, function (error) {
+        if (btn) { btn.disabled = false; btn.classList.remove('opacity-60'); }
+        if (modeBerubah()) return;
+        let pesan = 'Gagal mendeteksi lokasi GPS. Coba lagi.';
+        if (error && error.code === 1) pesan = 'Izin lokasi ditolak. Aktifkan izin lokasi untuk browser ini di pengaturan HP Anda, lalu tekan Refresh GPS lagi.';
+        else if (error && error.code === 2) pesan = 'GPS tidak aktif atau sinyal tidak ditemukan. Pastikan GPS/Lokasi di HP Anda sudah dinyalakan, lalu coba lagi.';
+        else if (error && error.code === 3) pesan = 'Pencarian lokasi terlalu lama (timeout). Coba pindah ke area terbuka lalu tekan Refresh GPS lagi.';
+        setGpsStatusUI('error', 'Gagal mendapatkan lokasi', pesan);
+      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    }
+
+    /* ===== BARCODE (QR) UNIVERSAL - PANEL GURU & AKUN BARCODE ===== */
+    let bcSlots = {}, bcOffset = 0, bcSlotMs = 30000, bcTimer = null, bcLoading = false, bcShown = null, bcNextTry = 0;
+    function bcEl(id) { return document.getElementById(id + (currentUser && currentUser.role === 'Barcode' ? '2' : '')); }
+    function loadBarcodeSlots() {
+      if (bcLoading || !currentUser || Date.now() < bcNextTry) return;
+      bcLoading = true;
+      runServer(currentUser.role === 'Barcode' ? 'getBarcodeSlots' : 'getWaliBarcodeSlots', [currentUser.username], { retries: 3 }).then(res => {
+        if (!res || !res.success) { bcNextTry = Date.now() + 5000; const b = bcEl('barcodeQrBox'); if (b && !bcShown) b.innerText = (res && res.message) || 'Gagal memuat barcode.'; return; }
+        bcOffset = res.serverNow - Date.now();
+        bcSlotMs = res.slotMs || (currentUser.role === 'Barcode' ? 30000 : 3600000);
+        res.slots.forEach(s => { bcSlots[s.slot] = s.code; });
+      }, (err) => {
+        bcNextTry = Date.now() + 5000;
+        const b = bcEl('barcodeQrBox');
+        if (b && !bcShown) b.innerText = 'Gagal memuat barcode: ' + ((err && err.message) || 'server tidak merespons') + ' Coba buka ulang tab ini.';
+      }).finally(() => { bcLoading = false; });
+    }
+    /* ===== KETERANGAN URUTAN VERIFIKASI (laman role Barcode, mengikuti saklar admin) ===== */
+    let bcStepsTimer = null;
+    function loadBarcodeSteps() {
+      runServer('getPresensiConfig', [], { retries: 2 }).then(cfg => {
+        if (!cfg) return;
+        const f = { selfie: cfg.aktifSelfie !== false, barcode: cfg.aktifBarcode === true, gps: cfg.aktifGps !== false };
+        const steps = [['fa-list-check', 'Pilih status kehadiran']];
+        if (f.selfie) steps.push(['fa-camera', 'Foto selfie']);
+        if (f.barcode) steps.push(['fa-qrcode', 'Scan barcode ini']);
+        if (f.gps) steps.push(['fa-location-crosshairs', 'Cek lokasi GPS']);
+        steps.push(['fa-paper-plane', 'Kirim presensi']);
+        document.getElementById('bcStepsList').innerHTML = steps.map((s, i) =>
+          (i ? '<i class="fas fa-chevron-right text-slate-300 mx-2"></i>' : '') +
+          '<span class="inline-flex items-center"><span class="w-5 h-5 rounded-full bg-primary-600 text-white text-[10px] font-bold flex items-center justify-center mr-1.5">' + (i + 1) + '</span><i class="fas ' + s[0] + ' text-primary-600 mr-1"></i><span class="font-semibold">' + s[1] + '</span></span>'
+        ).join('');
+        const w = document.getElementById('bcStepsWarn');
+        w.innerText = f.barcode ? '' : 'Saklar "Scan Barcode" sedang nonaktif di panel admin, siswa tidak diminta scan barcode.';
+        w.classList.toggle('hidden', f.barcode);
+      }, () => {});
+    }
+    function stopBarcodeSteps() { if (bcStepsTimer) { clearInterval(bcStepsTimer); bcStepsTimer = null; } }
+
+    function enterBarcodeFullscreen() {
+      const el = document.documentElement;
+      if (!currentUser || currentUser.role !== 'Barcode' || document.fullscreenElement || document.webkitFullscreenElement) return;
+      const viaWrapper = () => { try { if (window.top !== window) window.top.postMessage({ type: 'SP_FULLSCREEN_REQUEST' }, '*'); } catch (e) {} };
+      const rq = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (!rq) return viaWrapper();
+      try { const p = rq.call(el); if (p && p.catch) p.catch(viaWrapper); } catch (e) { viaWrapper(); }
+    }
+    function toggleBarcodeFullscreen() {
+      if (document.fullscreenElement || document.webkitFullscreenElement) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); }
+      else enterBarcodeFullscreen();
+    }
+    function onBarcodeScreenChange() {
+      bcShown = null;  // gambar ulang QR sesuai ukuran layar
+      const hint = document.getElementById('bcFsHint');
+      if (hint) hint.classList.toggle('hidden', !(currentUser && currentUser.role === 'Barcode') || !!(document.fullscreenElement || document.webkitFullscreenElement));
+    }
+    document.addEventListener('fullscreenchange', onBarcodeScreenChange);
+    document.addEventListener('webkitfullscreenchange', onBarcodeScreenChange);
+    window.addEventListener('resize', () => { bcShown = null; });
+    function startBarcodeTab() {
+      stopBarcodeTab();
+      const info = document.getElementById('barcodeKelasInfo');
+      bcSlots = {}; bcShown = null; bcNextTry = 0;
+      // Guru Wali Kelas: barcode dinamis, berganti tiap 60 menit
+      bcSlotMs = (currentUser.role === 'Barcode') ? 30000 : 3600000;
+      if (currentUser.role !== 'Barcode') {
+        if (info) info.innerText = 'Barcode atas nama ' + currentUser.nama + ' • berlaku untuk semua kelas';
+        const wbox = document.getElementById('barcodeQrBox');
+        if (wbox) wbox.innerText = 'Memuat barcode...';
+      }
+      loadBarcodeSlots();
+      bcTimer = setInterval(tickBarcode, 250);
+      onBarcodeScreenChange();
+      if (currentUser.role === 'Barcode') {
+        loadBarcodeSteps();
+        bcStepsTimer = setInterval(loadBarcodeSteps, 60000);
+      }
+    }
+    function stopBarcodeTab() { if (bcTimer) { clearInterval(bcTimer); bcTimer = null; } stopBarcodeSteps(); }
+    function tickBarcode() {
+      if (!currentUser) return stopBarcodeTab();
+      const SLOT = bcSlotMs, now = Date.now() + bcOffset, slot = Math.floor(now / SLOT);
+      const left = Math.ceil((SLOT - (now % SLOT)) / 1000);
+      const isBc = currentUser.role === 'Barcode';
+      bcEl('barcodeCountText').innerText = isBc ? left : (Math.floor(left / 60) + ':' + ('0' + (left % 60)).slice(-2));
+      bcEl('barcodeCountBar').style.width = (100 - (now % SLOT) / SLOT * 100) + '%';
+      if (!bcSlots[slot + 2]) loadBarcodeSlots();
+      if (bcShown === slot) return;
+      const code = bcSlots[slot];
+      if (!code) return;
+      bcShown = slot;
+      const box = bcEl('barcodeQrBox');
+      box.innerHTML = '';
+      if (typeof QRCode === 'undefined') { box.innerText = 'Pustaka QR gagal dimuat. Periksa koneksi internet lalu muat ulang.'; return; }
+      const qs = Math.max(200, Math.min(520, Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.5)));
+      new QRCode(box, { text: (isBc ? 'SPB2:' : 'SPB4:') + encodeURIComponent(currentUser.username) + ':' + code, width: qs, height: qs, correctLevel: QRCode.CorrectLevel.M });
+    }
+
+    /* ===== TAB VERIFIKASI BARCODE (WALI KELAS) ===== */
+    let verifBcRows = [];
+    function initVerifBarcodeTab() {
+      const d = new Date(), today = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      const s = document.getElementById('verifBcStart'), e = document.getElementById('verifBcEnd');
+      if (!s.value) s.value = today;
+      if (!e.value) e.value = today;
+      loadVerifBarcode();
+    }
+    function loadVerifBarcode() {
+      const s = document.getElementById('verifBcStart').value, e = document.getElementById('verifBcEnd').value;
+      if (!s || !e || s > e) { alert('Rentang tanggal tidak valid.'); return; }
+      showStatusBar('Memuat data verifikasi barcode...', 40);
+      runServer('getBarcodeVerifLogs', [currentUser.kelas, currentUser.jurusan, s, e], { retries: 2 }).then(rows => {
+        hideStatusBar();
+        verifBcRows = rows || [];
+        renderVerifBarcode();
+      }, () => { hideStatusBar(); alert('Gagal memuat data. Coba lagi.'); });
+    }
+    function renderVerifBarcode() {
+      const mine = document.getElementById('verifBcMine').checked;
+      const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const rows = mine ? verifBcRows.filter(r => r.verifUser === currentUser.username) : verifBcRows;
+      const done = rows.filter(r => r.verifNama).length;
+      document.getElementById('verifBcSummary').innerText = rows.length + ' presensi • ' + done + ' terverifikasi barcode • ' + (rows.length - done) + ' tanpa barcode';
+      const body = document.getElementById('verifBcBody');
+      if (!rows.length) { body.innerHTML = '<tr><td colspan="6" class="p-6 text-center text-xs text-slate-400">Tidak ada data pada rentang tanggal ini.</td></tr>'; return; }
+      body.innerHTML = rows.map((r, i) => `<tr>
+        <td class="p-4 text-center">${i + 1}</td><td class="p-4">${esc(r.tanggal)}</td><td class="p-4">${esc(r.nisn)}</td>
+        <td class="p-4 font-semibold">${esc(r.nama)}</td><td class="p-4 text-center">${esc(r.status)}</td>
+        <td class="p-4">${r.verifNama ? '<span class="inline-flex items-center px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold"><i class="fas fa-check mr-1"></i>' + esc(r.verifNama) + '</span>' : '<span class="text-slate-400">-</span>'}</td>
+      </tr>`).join('');
+    }
+
+    /* ===== LANGKAH PRESENSI SISWA (saklar admin) + SCAN BARCODE ===== */
+    let capturedBarcodeTicket = null, capturedBarcodeAt = 0, scanStream = null, scanRaf = 0;
+    function fitur() {
+      if (isStatusBukti()) return { selfie: true, barcode: false, gps: true, keterangan: true };   // PKL/Izin/Sakit/PJJ: tidak terikat panel admin; cek GPS (lokasi terbaca, tanpa radius) selalu wajib
+      const c = presensiConfig || {};
+      return { selfie: c.aktifSelfie !== false, barcode: c.aktifBarcode === true, gps: c.aktifGps !== false };
+    }
+    function applyFiturPresensi(cfg) {
+      const f = fitur();
+      [['stepSelfie', f.selfie], ['stepBarcode', f.barcode], ['stepGps', f.gps], ['stepKeterangan', !!f.keterangan]].forEach(p => {
+        const el = document.getElementById(p[0]);
+        if (el) el.classList.toggle('hidden', !p[1]);
+      });
+      const rear = isStatusBukti();
+      const hintLok = document.getElementById('ketLokasiHint'); if (hintLok) hintLok.classList.toggle('hidden', !rear);
+      const t = document.getElementById('selfieStepTitle'); if (t) t.innerText = rear ? 'Foto Bukti (Kamera Depan/Belakang):' : 'Ambil Foto Selfie Kehadiran:';
+      const l = document.getElementById('btnSelfieLabel'); if (l) l.innerText = rear ? 'Buka Kamera / Ambil Foto Bukti' : 'Buka Kamera / Ambil Foto Selfie';
+      const hn = document.getElementById('selfieRearHint'); if (hn) hn.classList.toggle('hidden', !rear);
+      if (!isStatusBukti() && f.barcode && !f.selfie && !window._bcAutoOnce) { window._bcAutoOnce = true; setTimeout(autoOpenBarcodeScanner, 800); }
+      let n = 2;
+      ['stepSelfie', 'stepBarcode', 'stepGps', 'stepKeterangan'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && !el.classList.contains('hidden')) { const s = el.querySelector('.stepNum'); if (s) s.innerText = n++; }
+      });
+    }
+    function setBarcodeUI(state, title, desc) {
+      const icon = document.getElementById('barcodeStatusIcon');
+      const map = { ok: 'bg-emerald-100 text-emerald-600', error: 'bg-rose-100 text-rose-600', loading: 'bg-slate-100 text-slate-500' };
+      icon.className = 'w-9 h-9 rounded-full flex items-center justify-center flex-none ' + (map[state] || map.loading);
+      icon.innerHTML = '<i class="fas ' + (state === 'ok' ? 'fa-check' : state === 'error' ? 'fa-xmark' : 'fa-spinner fa-spin') + '"></i>';
+      document.getElementById('barcodeStatusTitle').innerText = title;
+      document.getElementById('barcodeStatusDesc').innerText = desc;
+    }
+    function verifyScannedBarcode(text) {
+      capturedBarcodeTicket = null;
+      setBarcodeUI('loading', 'Memverifikasi barcode...', 'Mohon tunggu sebentar.');
+      const nisn = document.getElementById('studentNisnDisplay').value;
+      runServer('verifyBarcode', [nisn, text], { retries: 2 }).then(res => {
+        if (res && res.success) {
+          capturedBarcodeTicket = res.ticket; capturedBarcodeAt = Date.now();
+          setBarcodeUI('ok', 'Barcode terverifikasi', 'Barcode dari ' + (res.issuer || 'guru') + '. Lanjutkan ke langkah berikutnya lalu kirim presensi (berlaku 4 menit).');
+        } else {
+          setBarcodeUI('error', 'Barcode ditolak', (res && res.message) || 'Verifikasi gagal.');
+        }
+      }, () => setBarcodeUI('error', 'Gagal menghubungi server', 'Periksa koneksi internet lalu scan ulang.'));
+    }
+    let scanTimer = 0, scanBusy = false, qrDetector = null;
+    window.addEventListener('load', () => { setTimeout(ensureJsQR, 1500); });
+    // Muat pembaca QR (jsQR) dari beberapa sumber cadangan bila tag <script> di atas gagal.
+    function loadScriptOnce(url) {
+      return new Promise(res => {
+        const s = document.createElement('script');
+        s.src = url; s.onload = () => res(typeof jsQR !== 'undefined'); s.onerror = () => res(false);
+        document.head.appendChild(s);
+      });
+    }
+    function ensureJsQR() {
+      if (typeof jsQR !== 'undefined') return Promise.resolve(true);
+      if (window._jsqrP) return window._jsqrP;
+      const urls = ['https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js', 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js', 'https://unpkg.com/jsqr@1.4.0/dist/jsQR.js'];
+      window._jsqrP = urls.reduce((p, u) => p.then(ok => ok || loadScriptOnce(u)), Promise.resolve(false)).then(ok => { if (!ok) window._jsqrP = null; return ok; });
+      return window._jsqrP;
+    }
+    function decodeQrFrame(source, w, h) {
+      // Promise<string|null>. Menolak dengan Error('NO_DECODER') jika tidak ada pembaca QR sama sekali.
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(source, 0, 0, w, h);
+      const viaJsQR = () => ensureJsQR().then(ok => {
+        if (!ok) throw new Error('NO_DECODER');
+        const r = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'attemptBoth' });
+        return r ? r.data : null;
+      });
+      if ('BarcodeDetector' in window) {
+        try {
+          qrDetector = qrDetector || new BarcodeDetector({ formats: ['qr_code'] });
+          return qrDetector.detect(c).then(r => (r && r.length ? r[0].rawValue : viaJsQR().catch(() => null)), () => viaJsQR());
+        } catch (e) {}
+      }
+      return viaJsQR();
+    }
+    function showNoDecoder() {
+      setBarcodeUI('error', 'Pembaca QR gagal dimuat', 'Pustaka pembaca QR tidak bisa diunduh (internet lambat atau situs CDN diblokir jaringan sekolah). Coba ganti jaringan (data seluler/Wi-Fi lain) lalu muat ulang halaman.');
+    }
+    function autoOpenBarcodeScanner() {
+      const modal = document.getElementById('barcodeScanModal');
+      if (!fitur().barcode || !modal || !modal.classList.contains('hidden') || scanStream || wrapperScanPending) return;
+      if (capturedBarcodeTicket && (Date.now() - capturedBarcodeAt) < 270000) return;
+      openBarcodeScanner();
+    }
+    function barcodeCamError(e) {
+      const n = (e && e.name) || '';
+      if (n === 'NotAllowedError' || n === 'SecurityError') return 'Izin kamera ditolak atau diblokir. Izinkan kamera lewat ikon gembok di bilah alamat (atau buka lewat Chrome/Safari, bukan dari dalam WhatsApp/Instagram).';
+      if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'Kamera tidak ditemukan di perangkat ini. Hubungi guru/admin untuk bantuan.';
+      if (n === 'NotReadableError') return 'Kamera sedang dipakai aplikasi lain. Tutup aplikasi kamera lalu coba lagi.';
+      return 'Kamera tidak bisa dibuka' + (n ? ' (' + n + ')' : '') + '. Hubungi guru/admin untuk bantuan.';
+    }
+    /* Kamera di dalam Apps Script sering diblokir Google. Jika aplikasi dibuka lewat halaman pembungkus (GitHub),
+       pembungkus yang membuka kamera & membaca QR, lalu mengirim hasilnya ke sini lewat postMessage. */
+    let wrapperAck = false, wrapperScanPending = false;
+    window.addEventListener('message', e => {
+      if (e.source !== window.top) return;
+      const d = e.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'SP_SCAN_ACK') wrapperAck = true;
+      else if (d.type === 'SP_SCAN_RESULT') { wrapperScanPending = false; verifyScannedBarcode(String(d.text || '')); }
+      else if (d.type === 'SP_SCAN_ERROR') { wrapperScanPending = false; setBarcodeUI('error', 'Kamera tidak bisa dibuka', String(d.message || 'Hubungi guru/admin untuk bantuan.')); }
+      else if (d.type === 'SP_SCAN_CANCEL') { wrapperScanPending = false; setBarcodeUI('error', 'Scan dibatalkan', 'Tekan "Scan Barcode" untuk membuka kamera lagi.'); }
+    });
+    function tryWrapperScan() {
+      return new Promise(resolve => {
+        if (window.top === window) return resolve(false);
+        wrapperAck = false;
+        try { window.top.postMessage({ type: 'SP_SCAN_REQUEST' }, '*'); } catch (e) { return resolve(false); }
+        setTimeout(() => {
+          if (wrapperAck) { wrapperScanPending = true; setBarcodeUI('loading', 'Membuka kamera...', 'Jika muncul pertanyaan izin kamera, pilih Izinkan.'); }
+          resolve(wrapperAck);
+        }, 1200);
+      });
+    }
+    function openBarcodeScanner() {
+      if (scanStream || wrapperScanPending) return;
+      tryWrapperScan().then(used => { if (!used) localOpenScanner(); });
+    }
+    function localOpenScanner() {
+      if (scanStream) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setBarcodeUI('error', 'Kamera tidak tersedia', 'Browser/halaman ini tidak mengizinkan kamera langsung. Buka aplikasi lewat alamat resmi sekolah (halaman pembungkus) atau browser lain.');
+        return;
+      }
+      ensureJsQR();
+      setBarcodeUI('loading', 'Membuka kamera...', 'Jika muncul pertanyaan izin kamera, pilih Izinkan.');
+      const getCam = () => navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+        .catch(err => (err && (err.name === 'OverconstrainedError' || err.name === 'NotFoundError'))
+          ? navigator.mediaDevices.getUserMedia({ video: true, audio: false }) : Promise.reject(err));
+      getCam().then(stream => {
+        scanStream = stream;
+        const v = document.getElementById('barcodeVideo');
+        v.muted = true; v.setAttribute('playsinline', ''); v.srcObject = stream;
+        document.getElementById('barcodeScanModal').classList.remove('hidden');
+        setBarcodeUI('loading', 'Arahkan kamera ke barcode', 'Barcode akan terbaca otomatis.');
+        const p = v.play(); if (p && p.catch) p.catch(() => {});
+        const loop = () => {
+          if (!scanStream) return;
+          if (v.videoWidth && !scanBusy) {
+            scanBusy = true;
+            const k = Math.min(1, 960 / v.videoWidth);
+            decodeQrFrame(v, Math.round(v.videoWidth * k), Math.round(v.videoHeight * k)).then(text => {
+              scanBusy = false;
+              if (text && scanStream) { closeBarcodeScanner(); verifyScannedBarcode(text); }
+            }, err => {
+              scanBusy = false;
+              if (err && err.message === 'NO_DECODER') { closeBarcodeScanner(); showNoDecoder(); }
+            });
+          }
+          scanTimer = setTimeout(loop, 150);
+        };
+        loop();
+      }).catch(err => setBarcodeUI('error', 'Kamera tidak bisa dibuka', barcodeCamError(err)));
+    }
+    function closeBarcodeScanner() {
+      clearTimeout(scanTimer); scanBusy = false;
+      if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+      document.getElementById('barcodeScanModal').classList.add('hidden');
+      if (!capturedBarcodeTicket && document.getElementById('barcodeStatusTitle').innerText.indexOf('Arahkan') === 0)
+        setBarcodeUI('error', 'Scan dibatalkan', 'Tekan "Scan Barcode" untuk membuka kamera lagi.');
+    }
+    // Kosongkan sisa data presensi (selfie, hasil cek GPS, tiket barcode) milik siswa sebelumnya.
+    // Dipanggil hanya untuk akun Siswa: saat logout dan saat siswa login, agar HP yang dipakai bergantian tidak membawa data siswa lain.
+    function resetStudentPresensiState() {
+      try { closeBarcodeScanner(); } catch (e) {}
+      try { closeRearCamera(); } catch (e) {}
+      resetSelfieCaptureUI();
+      selfiePending = false;
+      capturedBarcodeTicket = null; capturedBarcodeAt = 0;
+      const bIcon = document.getElementById('barcodeStatusIcon');
+      if (bIcon) { bIcon.className = 'w-9 h-9 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center flex-none'; bIcon.innerHTML = '<i class="fas fa-qrcode"></i>'; }
+      const bTitle = document.getElementById('barcodeStatusTitle'); if (bTitle) bTitle.innerText = 'Barcode belum discan';
+      const bDesc = document.getElementById('barcodeStatusDesc'); if (bDesc) bDesc.innerText = 'Scan barcode presensi dari guru wali kelas atau layar barcode.';
+      gpsCheckedOk = false; gpsCheckedAt = 0; gpsCheckedMode = '';
+      setGpsStatusUI('idle', 'Lokasi belum dicek', 'Wajib: tekan tombol di bawah dan pastikan status GPS "OK" sebelum bisa mengirim presensi.');
+      window._bcAutoOnce = false;
+      const ket = document.getElementById('studentKeterangan'); if (ket) ket.value = '';
+      const rh = document.querySelector('input[name="studentStatusRadio"][value="Hadir"]'); if (rh) rh.checked = true;
+      try { applyFiturPresensi(); } catch (e) {}
+    }
+
+    function loadStudentDashboardInfo(user) {
+      resetStudentPresensiState();
+      document.getElementById('studentNameDisplay').value = user.nama;
+      document.getElementById('studentNisnDisplay').value = user.nisn;
+      checkStudentStatusToday(user.nisn);
+      fetchPresensiConfig().then(applyFiturPresensi).catch(() => {});
+    }
+
+    function checkStudentStatusToday(nisn) {
+      const todayStr = document.getElementById('studentAttendanceDate').value;
+      if (!nisn || !todayStr) return;
+
+      runServer('getStudentTodayAttendance', [nisn, todayStr], { retries: 2 }).then(renderStudentStatusToday, () => {
+        // Gagal memuat status: jangan biarkan tombol menggantung. Server tetap menolak presensi ganda.
+        hideStatusBar();
+        const b = document.getElementById('btnSubmitStudent');
+        if (b) resetSubmitButton(b);
+      });
+    }
+
+    function renderStudentStatusToday(res) {
+        const card = document.getElementById('studentStatusCard');
+        const icon = document.getElementById('statusBadgeIcon');
+        const title = document.getElementById('statusBadgeTitle');
+        const desc = document.getElementById('statusBadgeDesc');
+        const btn = document.getElementById('btnSubmitStudent');
+
+        if (res.hasRecord) {
+          card.classList.remove('hidden');
+          btn.disabled = true;
+          btn.classList.add('opacity-50', 'cursor-not-allowed');
+          
+          if (res.isVerified) {
+            card.className = "p-4 rounded-xl border bg-emerald-50 border-emerald-200 text-emerald-900 flex items-center justify-between";
+            icon.className = "w-10 h-10 rounded-full bg-emerald-200 text-emerald-700 flex items-center justify-center text-lg font-bold";
+            icon.innerHTML = '<i class="fas fa-check-circle"></i>';
+            title.innerText = `Terverifikasi (${res.status})`;
+            desc.innerText = `Presensi Anda telah disetujui.`;
+            btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i> Presensi Selesai';
+          } else {
+            card.className = "p-4 rounded-xl border bg-secondary-50 border-secondary-200 text-secondary-900 flex items-center justify-between";
+            icon.className = "w-10 h-10 rounded-full bg-secondary-200 text-secondary-700 flex items-center justify-center text-lg font-bold";
+            icon.innerHTML = '<i class="fas fa-clock"></i>';
+            title.innerText = `Menunggu Verifikasi (${res.status})`;
+            desc.innerText = `Laporan Anda telah terkirim dan menunggu verifikasi Wali Kelas.`;
+            btn.innerHTML = '<i class="fas fa-ban mr-2"></i> Sudah Absen Hari Ini';
+          }
+        } else {
+          card.classList.add('hidden');
+          btn.disabled = false;
+          btn.classList.remove('opacity-50', 'cursor-not-allowed');
+          btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i> Kirim Presensi';
+          // Muat pengaturan presensi lebih awal (dengan jeda acak agar permintaan siswa tidak serentak).
+          setTimeout(() => { fetchPresensiConfig().catch(() => {}); }, Math.floor(Math.random() * 1000));
+        }
+    }
+
+    function submitStudentAttendanceWithSelfie() {
+      if (presensiSubmitting) return;
+
+      const statusBukti = isStatusBukti();
+      if (fitur().selfie && !capturedSelfieBase64) {
+        alert(statusBukti ? "Silakan ambil foto bukti dengan kamera belakang terlebih dahulu sebelum mengirim presensi!" : "Silakan potret foto selfie Anda terlebih dahulu sebelum mengirim presensi!");
+        return;
+      }
+      const ketVal = (document.getElementById('studentKeterangan').value || '').trim();
+      if (statusBukti && ketVal.length < 3) {
+        alert("Keterangan wajib diisi untuk status " + getStudentStatus() + " (minimal 3 karakter).");
+        return;
+      }
+
+      // Langkah 3 (Cek Lokasi GPS) sekarang WAJIB: siswa harus menekan "Refresh GPS"
+      // dan hasilnya OK (dalam radius sekolah) sebelum bisa mengirim presensi.
+      const gpsMasihBerlaku = gpsCheckedOk && gpsCheckedMode === (isStatusBukti() ? 'bukti' : 'hadir') && (Date.now() - gpsCheckedAt) <= GPS_CHECK_TTL_MS;
+      if (fitur().gps && !gpsMasihBerlaku) {
+        alert(isStatusBukti()
+          ? "Silakan tekan tombol \"Refresh GPS\" pada langkah Cek Lokasi GPS terlebih dahulu, dan pastikan lokasi terdeteksi (tanda hijau), sebelum mengirim presensi!"
+          : "Silakan tekan tombol \"Refresh GPS\" pada langkah 3 terlebih dahulu, dan pastikan status lokasi menunjukkan OK (dalam radius sekolah), sebelum mengirim presensi!");
+        return;
+      }
+
+      if (fitur().gps && !navigator.geolocation) {
+        alert("Browser Anda tidak mendukung deteksi GPS!");
+        return;
+      }
+
+      if (fitur().barcode && (!capturedBarcodeTicket || (Date.now() - capturedBarcodeAt) > 270000)) {
+        alert("Silakan scan barcode dari layar guru terlebih dahulu (verifikasi barcode berlaku 4 menit), lalu kirim presensi!");
+        return;
+      }
+
+      const btn = document.getElementById('btnSubmitStudent');
+      presensiSubmitting = true;
+      btn.disabled = true;
+      btn.classList.add('opacity-50', 'cursor-not-allowed');
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Mengirim Presensi...';
+
+      const fail = (msg) => {
+        hideStatusBar();
+        presensiSubmitting = false;
+        alert(msg);
+        resetSubmitButton(btn);
+      };
+
+      showStatusBar('Memeriksa pengaturan & posisi GPS...', 30);
+
+      // 1 panggilan untuk semua pengaturan (sering sudah tersedia dari pemuatan awal dashboard)
+      fetchPresensiConfig((a, m) => showStatusBar(NetStatus.retryText('mencoba lagi', a, m), 30)).then(cfg => {
+       try {
+        cfg = cfg || {};
+
+        // 1. Cek Pengaturan Browser
+        if (cfg.wajibChrome && !isChromeBrowser()) {
+          fail("Gagal Absen! Sistem mengharuskan presensi dilakukan menggunakan browser Google Chrome.");
+          return;
+        }
+
+        if (!statusBukti && cfg.aktifBarcode === true && !capturedBarcodeTicket) {
+          fail("Gagal Absen! Barcode wajib discan terlebih dahulu.");
+          return;
+        }
+        if ((statusBukti || cfg.aktifSelfie !== false) && !capturedSelfieBase64) {
+          fail("Gagal Absen! Foto selfie wajib diambil terlebih dahulu.");
+          return;
+        }
+
+        // 2. Sakelar Fake GPS & 3. Lokasi + radius sekolah
+        const isFakeGpsCheckEnabled = (cfg.aktifkanDeteksiFakeGps !== undefined) ? cfg.aktifkanDeteksiFakeGps : true;
+        const schoolLat = parseFloat(cfg.lat);
+        const schoolLon = parseFloat(cfg.lng);
+        const maxRadiusMeters = parseFloat(cfg.radius);
+
+        showStatusBar('Memeriksa posisi GPS & memverifikasi lokasi...', 40);
+
+        const noPos = { coords: { latitude: null, longitude: null, accuracy: null } };
+        const getPos = function (ok, ko, opt) {
+          if (statusBukti) {
+            // PKL/Izin/Sakit/PJJ: lokasi WAJIB terbaca. Gagal -> pengiriman dibatalkan, siswa diminta mengulang.
+            if (!navigator.geolocation) { fail('Browser Anda tidak mendukung deteksi lokasi (GPS). Buka aplikasi lewat Google Chrome lalu coba lagi.'); return; }
+            navigator.geolocation.getCurrentPosition(ok, function (err) {
+              if (err && err.code === 1) { ko(err); return; }   // izin ditolak: percobaan ulang tidak membantu
+              // Sinyal GPS lemah / habis waktu: coba sekali lagi dengan mode hemat (jaringan/WiFi) sebelum menyerah.
+              navigator.geolocation.getCurrentPosition(ok, ko, { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 });
+            }, opt);
+          } else if (cfg.aktifGps === false) ok(noPos);
+          else navigator.geolocation.getCurrentPosition(ok, ko, opt);
+        };
+        getPos(function(position) {
+         try {
+          const userLat = position.coords.latitude;
+          const userLon = position.coords.longitude;
+          const accuracy = position.coords.accuracy;
+
+          // === DETEKSI FAKE GPS / MOCK LOCATION (EKSKLUSIF JIKA SAKELAR ADMIN ON) ===
+          if (isFakeGpsCheckEnabled && userLat !== null && (statusBukti || cfg.aktifGps !== false)) {
+            // A. Cek flag Mock Location (perangkat Android/browser tertentu)
+            if (position.coords.isMock || (position.isMock === true)) {
+              fail("Gagal Absen! Terdeteksi penggunaan aplikasi Fake GPS / Mock Location.");
+              return;
+            }
+
+            // B. Cek Akurasi Tidak Wajar (Fake GPS menyuplai akurasi 0m atau persis < 1m)
+            if (accuracy < 1) {
+              fail("Gagal Absen! Sinyal lokasi tidak valid atau terdeteksi manipulasi GPS.");
+              return;
+            }
+          }
+
+          // C. Cek Jarak Radius Sekolah
+          const distance = calculateDistance(userLat, userLon, schoolLat, schoolLon);
+
+          if (!statusBukti && cfg.aktifGps !== false && distance > maxRadiusMeters) {
+            fail(`Gagal Absen! Jarak Anda (${Math.round(distance)} meter) berada di luar radius ${maxRadiusMeters} meter dari sekolah.`);
+            return;
+          }
+
+          showStatusBar('Mengunggah foto & data presensi...', 70);
+          const nisn = document.getElementById('studentNisnDisplay').value;
+          const nama = document.getElementById('studentNameDisplay').value;
+          const date = document.getElementById('studentAttendanceDate').value;
+          const status = getStudentStatus();
+
+          const payload = {
+            nisn: nisn,
+            nama: nama,
+            kelas: currentUser.kelas || 'X',
+            jurusan: currentUser.jurusan || 'TJKT',
+            tanggal: date,
+            status: status,
+            userLat: userLat,
+            userLon: userLon,
+            selfieBase64: (!statusBukti && cfg.aktifSelfie === false) ? null : capturedSelfieBase64,
+            keterangan: statusBukti ? ketVal : '',
+            barcodeTicket: statusBukti ? null : capturedBarcodeTicket
+          };
+
+          runServer('uploadStudentAttendance', [payload], {
+            retries: 4,
+            onRetry: (a, m) => showStatusBar(NetStatus.retryText('mengirim ulang otomatis', a, m, ' Jangan tutup halaman.'), 70)
+          }).then(res => {
+            hideStatusBar();
+            presensiSubmitting = false;
+            const retried = res && res.__attempts > 1;
+
+            if (res && res.success) {
+              alert(res.message);
+              if (res.status) {
+                // Tampilkan status langsung dari hasil server (menghemat 1 panggilan saat lonjakan)
+                renderStudentStatusToday({ hasRecord: true, status: res.status, isVerified: !!res.isVerified });
+              } else {
+                checkStudentStatusToday(nisn);
+              }
+            } else if (res && res.relogin) {
+              alert(res.message);
+              logout();
+            } else if (res && res.alreadyRecorded && retried) {
+              // Percobaan pertama ternyata sudah tersimpan (balasan server sempat hilang)
+              alert('Presensi Anda sudah tercatat di sistem.');
+              checkStudentStatusToday(nisn);
+            } else {
+              alert(res && res.message ? res.message : 'Presensi belum berhasil dikirim.');
+              checkStudentStatusToday(nisn);
+            }
+          }, err => {
+            hideStatusBar();
+            presensiSubmitting = false;
+            alert('Presensi belum berhasil terkirim karena koneksi atau server sedang bermasalah. Silakan tekan tombol kirim sekali lagi. Jika kartu status di atas sudah menunjukkan presensi tercatat, tidak perlu mengirim ulang.');
+            checkStudentStatusToday(nisn);
+          });
+         } catch (errInnerGps) {
+           // Jaring pengaman: kalau ada error tak terduga SETELAH GPS didapat
+           // (mis. status kehadiran tidak terpilih, data akun tidak lengkap, dll),
+           // jangan biarkan proses berhenti diam-diam tanpa pesan ke siswa.
+           console.error('Gagal memproses data sebelum kirim presensi:', errInnerGps);
+           fail('Terjadi kendala saat menyiapkan data presensi Anda. Silakan coba tekan tombol kirim sekali lagi. Jika masih gagal, laporkan ke admin/wali kelas.');
+         }
+        }, function(error) {
+          let pesanGps = "Gagal mendeteksi lokasi GPS. Pastikan izin GPS aktif!";
+          if (error && error.code === 1) pesanGps = "Izin lokasi (GPS) ditolak. Silakan aktifkan izin lokasi untuk browser ini di pengaturan HP Anda, lalu coba lagi.";
+          else if (error && error.code === 2) pesanGps = "Posisi GPS tidak dapat dideteksi. Pastikan GPS aktif & sinyal cukup, lalu coba lagi.";
+          else if (error && error.code === 3) pesanGps = "Mendeteksi lokasi GPS terlalu lama (timeout). Coba pindah ke area terbuka/sinyal lebih baik, lalu coba lagi.";
+          fail(statusBukti ? pesanGps + '\n\nPresensi BELUM terkirim. Lokasi wajib terbaca untuk status ' + pjjLbl_() + ', silakan ulangi pengiriman setelah GPS aktif.' : pesanGps);
+        }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+
+       } catch (errOuterCfg) {
+         // Jaring pengaman: error tak terduga sebelum GPS diminta (mis. saat membaca pengaturan presensi).
+         console.error('Gagal memproses pengaturan presensi:', errOuterCfg);
+         fail('Terjadi kendala saat memuat pengaturan presensi. Silakan coba tekan tombol kirim sekali lagi. Jika masih gagal, laporkan ke admin/wali kelas.');
+       }
+      }, err => {
+        fail('Gagal memuat pengaturan presensi dari server. Periksa koneksi internet Anda lalu coba lagi.');
+      });
+    }
+
+    function resetSubmitButton(btn) {
+      btn.disabled = false;
+      btn.classList.remove('opacity-50', 'cursor-not-allowed');
+      btn.innerHTML = '<i class="fas fa-paper-plane mr-2"></i> Kirim Presensi';
+    }
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const φ1 = lat1 * Math.PI/180;
+      const φ2 = lat2 * Math.PI/180;
+      const Δφ = (lat2-lat1) * Math.PI/180;
+      const Δλ = (lon2-lon1) * Math.PI/180;
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function switchAdminTab(tab) {
+      const isUsers = (tab === 'users');
+      const isGps = (tab === 'gps');
+      const isBrowser = (tab === 'browser');
+      const isVerifikasi = (tab === 'verifikasi');
+      const isReset = (tab === 'reset');
+      const isTampilan = (tab === 'tampilan');
+
+      document.getElementById('adminTabUsers').classList.toggle('hidden', !isUsers);
+      document.getElementById('adminTabGps').classList.toggle('hidden', !isGps);
+      document.getElementById('adminTabBrowser').classList.toggle('hidden', !isBrowser);
+      document.getElementById('adminTabVerifikasi').classList.toggle('hidden', !isVerifikasi);
+      document.getElementById('adminTabReset').classList.toggle('hidden', !isReset);
+      document.getElementById('adminTabTampilan').classList.toggle('hidden', !isTampilan);
+
+      const activeClass = "tab-btn tab-btn-active";
+      const inactiveClass = "tab-btn";
+
+      document.getElementById('adminTabUserBtn').className = isUsers ? activeClass : inactiveClass;
+      document.getElementById('adminTabGpsBtn').className = isGps ? activeClass : inactiveClass;
+      document.getElementById('adminTabBrowserBtn').className = isBrowser ? activeClass : inactiveClass;
+      document.getElementById('adminTabVerifikasiBtn').className = isVerifikasi ? activeClass : inactiveClass;
+      document.getElementById('adminTabResetBtn').className = isReset ? activeClass : inactiveClass;
+      document.getElementById('adminTabTampilanBtn').className = isTampilan ? activeClass : inactiveClass;
+
+      if (isGps) {
+        loadAdminGpsConfig();
+        loadFakeGpsSettings();
+        loadLokasiKeteranganSetting();
+      } else if (isBrowser) loadBrowserSettings();
+      else if (isVerifikasi) loadVerifikasiSettings();
+      else if (isUsers) loadAdminUsers();
+      else if (isTampilan) loadThemeSettingsAdmin();
+    }
+
+    function loadFakeGpsSettings() {
+      showStatusBar('Memuat pengaturan proteksi Fake GPS...', 30);
+      gsr().withSuccessHandler(settings => {
+        hideStatusBar();
+        document.getElementById('toggleEnableFakeGpsCheck').checked = settings.aktifkanDeteksiFakeGps;
+      }).getFakeGpsSettings();
+    }
+
+    function updateFakeGpsSettings() {
+      const aktif = document.getElementById('toggleEnableFakeGpsCheck').checked;
+
+      showStatusBar('Menyimpan pengaturan Fake GPS...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (!res.success) alert('Gagal menyimpan: ' + res.message);
+      }).saveFakeGpsSettings({ aktifkanDeteksiFakeGps: aktif });
+    }
+
+    function loadLokasiKeteranganSetting() {
+      gsr().withSuccessHandler(s => {
+        document.getElementById('toggleLokasiKeterangan').checked = !!(s && s.aktif);
+      }).getLokasiKeteranganSetting();
+    }
+
+    function updateLokasiKeterangan() {
+      const aktif = document.getElementById('toggleLokasiKeterangan').checked;
+      showStatusBar('Menyimpan pengaturan lokasi keterangan...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        presensiConfig = null;
+        if (!res.success) { alert('Gagal menyimpan: ' + res.message); loadLokasiKeteranganSetting(); }
+      }).saveLokasiKeteranganSetting({ aktif: aktif });
+    }
+
+    function loadBrowserSettings() {
+      showStatusBar('Memuat pengaturan browser...', 30);
+      gsr().withSuccessHandler(settings => {
+        hideStatusBar();
+        document.getElementById('toggleRequireChrome').checked = settings.wajibChrome;
+      }).getBrowserSettings();
+      loadFotoFolderSettings();
+      loadBackupSettings();
+    }
+
+    function renderFotoFolderStatus(res) {
+      const el = document.getElementById('folderFotoStatus');
+      el.innerHTML = '';
+      const ic = document.createElement('i');
+      const txt = document.createElement('span');
+      if (res && res.ada) {
+        el.className = 'text-xs text-emerald-700';
+        ic.className = 'fas fa-circle-check mr-1';
+        txt.textContent = 'Folder ditemukan di Google Drive. ';
+        el.appendChild(ic); el.appendChild(txt);
+        if (res.url) {
+          const a = document.createElement('a');
+          a.href = res.url; a.target = '_blank'; a.rel = 'noopener';
+          a.className = 'font-bold underline';
+          a.textContent = 'Buka folder';
+          el.appendChild(a);
+        }
+      } else {
+        el.className = 'text-xs text-amber-700';
+        ic.className = 'fas fa-triangle-exclamation mr-1';
+        txt.textContent = 'Folder belum ada / tidak ditemukan di Drive. Klik Simpan untuk membuatnya dengan nama di atas.';
+        el.appendChild(ic); el.appendChild(txt);
+      }
+    }
+
+    // ===== BACKUP SHEET DATABASE (REVISI 94) =====
+    function renderBackupSettings(res) {
+      const st = document.getElementById('folderBackupStatus');
+      st.innerHTML = '';
+      const ic = document.createElement('i');
+      const txt = document.createElement('span');
+      if (res && res.ada) {
+        st.className = 'text-xs text-emerald-700';
+        ic.className = 'fas fa-circle-check mr-1';
+        txt.textContent = 'Folder tujuan: "' + (res.folderNama || '') + '". ';
+        st.appendChild(ic); st.appendChild(txt);
+        if (res.folderUrl) {
+          const a = document.createElement('a');
+          a.href = res.folderUrl; a.target = '_blank'; a.rel = 'noopener';
+          a.className = 'font-bold underline';
+          a.textContent = 'Buka folder';
+          st.appendChild(a);
+        }
+      } else {
+        st.className = 'text-xs text-amber-700';
+        ic.className = 'fas fa-triangle-exclamation mr-1';
+        txt.textContent = 'Folder backup belum diatur. Tempel link folder lalu klik Simpan.';
+        st.appendChild(ic); st.appendChild(txt);
+      }
+      const inp = document.getElementById('inputLinkFolderBackup');
+      if (res && res.linkTersimpan && !inp.value) inp.value = res.linkTersimpan;
+      document.getElementById('toggleBackupOtomatis').checked = !!(res && res.otomatis);
+      if (res && res.frekuensi) document.getElementById('selectBackupFrekuensi').value = res.frekuensi;
+      if (res && res.jam) document.getElementById('inputBackupJam').value = res.jam;
+      if (res && res.simpan !== undefined && res.simpan !== null) document.getElementById('inputBackupSimpan').value = res.simpan;
+      document.getElementById('backupJadwalInfo').textContent = (res && res.otomatis && res.jadwal) ? ('Backup berikutnya: ' + res.jadwal) : '';
+      renderBackupTerakhir(res && res.terakhir);
+    }
+
+    function renderBackupTerakhir(t) {
+      const el = document.getElementById('backupTerakhirInfo');
+      el.innerHTML = '';
+      if (!t) { el.className = 'text-xs text-slate-500'; el.textContent = 'Belum ada riwayat backup.'; return; }
+      const jenis = t.jenis === 'otomatis' ? 'otomatis' : 'manual';
+      if (t.ok) {
+        el.className = 'text-xs text-emerald-700';
+        el.appendChild(document.createTextNode('Backup terakhir (' + jenis + '): ' + t.waktu + ' - '));
+        if (t.url) {
+          const a = document.createElement('a');
+          a.href = t.url; a.target = '_blank'; a.rel = 'noopener';
+          a.className = 'font-bold underline';
+          a.textContent = t.nama || 'Buka file';
+          el.appendChild(a);
+        } else el.appendChild(document.createTextNode(t.nama || 'berhasil'));
+      } else {
+        el.className = 'text-xs text-rose-600';
+        el.textContent = 'Backup terakhir (' + jenis + ') GAGAL pada ' + t.waktu + ': ' + (t.pesan || '');
+      }
+    }
+
+    function loadBackupSettings() {
+      gsr().withSuccessHandler(res => {
+        if (res && res.success) renderBackupSettings(res);
+      }).withFailureHandler(() => {
+        const el = document.getElementById('folderBackupStatus');
+        el.className = 'text-xs text-rose-600';
+        el.textContent = 'Gagal memuat pengaturan backup.';
+      }).getBackupSettings();
+    }
+
+    function saveBackupFolder() {
+      const link = document.getElementById('inputLinkFolderBackup').value.trim();
+      if (!link) return alert('Link folder Google Drive tidak boleh kosong!');
+      const btn = document.getElementById('btnSimpanFolderBackup');
+      btn.disabled = true;
+      showStatusBar('Memeriksa folder backup...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        btn.disabled = false;
+        alert(res && res.message ? res.message : 'Selesai.');
+        loadBackupSettings();
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        btn.disabled = false;
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      }).saveBackupSettings({ link: link });
+    }
+
+    function jalankanBackupManual() {
+      const btn = document.getElementById('btnBackupManual');
+      btn.disabled = true;
+      showStatusBar('Membuat backup database, mohon tunggu...', 30);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        btn.disabled = false;
+        if (res && res.terakhir) renderBackupTerakhir(res.terakhir);
+        alert(res && res.message ? res.message : 'Selesai.');
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        btn.disabled = false;
+        alert('Backup gagal: ' + (err && err.message ? err.message : err));
+      }).backupSheetDatabaseManual();
+    }
+
+    // REVISI 95: saklar + frekuensi + jam + batas simpan dikirim bersama.
+    function kirimJadwalBackup(dariToggle) {
+      const cb = document.getElementById('toggleBackupOtomatis');
+      const btn = document.getElementById('btnSimpanJadwalBackup');
+      const data = {
+        aktif: cb.checked,
+        frekuensi: document.getElementById('selectBackupFrekuensi').value,
+        jam: (document.getElementById('inputBackupJam').value || '').trim(),
+        simpan: parseInt(document.getElementById('inputBackupSimpan').value, 10)
+      };
+      const batalkan = () => { if (dariToggle) cb.checked = !data.aktif; };
+      if (!data.jam) { batalkan(); return alert('Jam backup belum diisi.'); }
+      if (isNaN(data.simpan)) { batalkan(); return alert('Isi jumlah backup otomatis yang disimpan (0 sampai 60).'); }
+      btn.disabled = true;
+      showStatusBar('Menyimpan pengaturan backup otomatis...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        btn.disabled = false;
+        if (!res || !res.success) {
+          batalkan();
+          alert('Gagal: ' + (res && res.message ? res.message : 'tidak diketahui'));
+          return;
+        }
+        document.getElementById('backupJadwalInfo').textContent = (data.aktif && res.jadwal) ? ('Backup berikutnya: ' + res.jadwal) : '';
+        if (!dariToggle) alert(res.message || 'Jadwal tersimpan.');
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        btn.disabled = false;
+        batalkan();
+        alert('Gagal: ' + (err && err.message ? err.message : err));
+      }).setBackupOtomatis(data);
+    }
+
+    function updateBackupOtomatis() { kirimJadwalBackup(true); }
+    function simpanJadwalBackup() { kirimJadwalBackup(false); }
+
+    // Saran batas simpan saat frekuensi diganti (hanya bila isinya masih angka bawaan/saran).
+    function sarankanBatasBackup() {
+      const frek = document.getElementById('selectBackupFrekuensi').value;
+      const el = document.getElementById('inputBackupSimpan');
+      const v = parseInt(el.value, 10);
+      if (isNaN(v) || v === 0 || v === 7 || v === 12) el.value = (frek === 'harian') ? 7 : 12;
+    }
+
+    function loadFotoFolderSettings() {
+      gsr().withSuccessHandler(res => {
+        document.getElementById('inputNamaFolderFoto').value = (res && res.nama) || '';
+        renderFotoFolderStatus(res);
+      }).withFailureHandler(() => {
+        const el = document.getElementById('folderFotoStatus');
+        el.className = 'text-xs text-rose-600';
+        el.textContent = 'Gagal memuat info folder.';
+      }).getFotoFolderSettings();
+    }
+
+    function saveFotoFolderName() {
+      const nama = document.getElementById('inputNamaFolderFoto').value.trim();
+      if (!nama) return alert('Nama folder tidak boleh kosong!');
+      const btn = document.getElementById('btnSimpanFolderFoto');
+      btn.disabled = true;
+      showStatusBar('Menyimpan pengaturan folder foto...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        btn.disabled = false;
+        if (res && res.success) {
+          document.getElementById('inputNamaFolderFoto').value = res.nama;
+          renderFotoFolderStatus(res);
+          alert(res.message);
+        } else {
+          alert('Gagal menyimpan: ' + (res && res.message ? res.message : 'tidak diketahui'));
+          loadFotoFolderSettings();
+        }
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        btn.disabled = false;
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      }).saveFotoFolderSettings({ nama: nama });
+    }
+
+    function updateBrowserSettings() {
+      const wajibChrome = document.getElementById('toggleRequireChrome').checked;
+
+      showStatusBar('Menyimpan pengaturan browser...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (!res.success) alert('Gagal menyimpan: ' + res.message);
+      }).saveBrowserSettings({ wajibChrome: wajibChrome });
+    }
+
+    function loadVerifikasiSettings() {
+      showStatusBar('Memuat pengaturan verifikasi...', 30);
+      gsr().withSuccessHandler(settings => {
+        hideStatusBar();
+        document.getElementById('toggleVerifMandiri').checked = settings.wajibVerifMandiri;
+        document.getElementById('toggleVerifSekretaris').checked = settings.wajibVerifSekretaris;
+        document.getElementById('toggleSekBukti').checked = settings.sekretarisVerifBukti === true;
+      }).getVerifikasiSettings();
+      gsr().withSuccessHandler(f => {
+        document.getElementById('toggleFiturSelfie').checked = f.aktifSelfie;
+        document.getElementById('toggleFiturBarcode').checked = f.aktifBarcode;
+        document.getElementById('toggleFiturGps').checked = f.aktifGps;
+      }).getFiturPresensi();
+      loadPjjSetting();
+    }
+
+    /* ===== SAKLAR STATUS PJJ (admin) ===== */
+    window.pjjAktif = false;
+    const KET_PLACEHOLDER_OFF = 'Contoh: Demam dan diperiksa dokter / Ada acara keluarga / PKL di PT. ...';
+    const KET_PLACEHOLDER_ON = 'Contoh: Demam dan diperiksa dokter / Ada acara keluarga / PKL di PT. ... / PJJ dari rumah karena ...';
+    function pjjLbl_() { return window.pjjAktif === true ? 'PKL/Izin/Sakit/PJJ' : 'PKL/Izin/Sakit'; }
+    function applyPjjVisibility(aktif) {
+      aktif = (aktif === true);
+      window.pjjAktif = aktif;
+      document.body.classList.toggle('pjj-off', !aktif);
+      const g = document.getElementById('studentStatusGrid');
+      if (g) { g.classList.toggle('grid-cols-5', aktif); g.classList.toggle('grid-cols-4', !aktif); }
+      const sg = document.getElementById('kepsekStatGrid');
+      if (sg) { sg.classList.toggle('lg:grid-cols-7', aktif); sg.classList.toggle('lg:grid-cols-6', !aktif); }
+      const ket = document.getElementById('studentKeterangan');
+      if (ket) ket.placeholder = aktif ? KET_PLACEHOLDER_ON : KET_PLACEHOLDER_OFF;
+      // Opsi <option> tidak bisa disembunyikan dengan CSS di semua browser -> ditambah/dihapus lewat JS.
+      const sel = document.getElementById('sekRekapStatus');
+      if (sel) {
+        const opt = sel.querySelector('option[value="pjj"]');
+        if (aktif && !opt) sel.appendChild(new Option('PJJ', 'pjj'));
+        else if (!aktif && opt) { if (sel.value === 'pjj') sel.value = 'alpa'; opt.remove(); }
+      }
+      if (!aktif) {
+        const r = document.querySelector('input[name="studentStatusRadio"][value="PJJ"]');
+        if (r && r.checked) {
+          const hd = document.querySelector('input[name="studentStatusRadio"][value="Hadir"]');
+          if (hd) hd.checked = true;
+          try { onStudentStatusChange(); } catch (e) {}
+        }
+      }
+    }
+    function refreshPjjFlag() {
+      fetchPresensiConfig().then(cfg => applyPjjVisibility(!!cfg && cfg.aktifPjj === true)).catch(() => {});
+    }
+    function loadPjjSetting() {
+      gsr().withSuccessHandler(s => {
+        const el = document.getElementById('togglePjj');
+        if (el) el.checked = !!(s && s.aktif);
+        const ev = document.getElementById('togglePjjVerif');
+        if (ev) ev.checked = !(s && s.wajibVerif === false);
+      }).getPjjSetting();
+    }
+    function updatePjjSetting() {
+      const aktif = document.getElementById('togglePjj').checked;
+      showStatusBar('Menyimpan pengaturan status PJJ...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        presensiConfig = null;
+        if (!res || !res.success) { alert('Gagal menyimpan: ' + ((res && res.message) || 'tidak ada respons')); loadPjjSetting(); return; }
+        applyPjjVisibility(aktif);
+        appCache.monthlyReportData = null;
+        appCache.matrixReportData = null;
+      }).savePjjSetting({ aktif: aktif });
+    }
+
+    function updatePjjVerifSetting() {
+      const wajibVerif = document.getElementById('togglePjjVerif').checked;
+      showStatusBar('Menyimpan pengaturan verifikasi PJJ...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        presensiConfig = null;
+        if (!res || !res.success) { alert('Gagal menyimpan: ' + ((res && res.message) || 'tidak ada respons')); loadPjjSetting(); }
+      }).withFailureHandler(() => { hideStatusBar(); alert('Gagal menyimpan pengaturan.'); loadPjjSetting(); }).savePjjSetting({ wajibVerif: wajibVerif });
+    }
+
+    function updateVerifikasiSettings() {
+      const wajibMandiri = document.getElementById('toggleVerifMandiri').checked;
+      const wajibSekretaris = document.getElementById('toggleVerifSekretaris').checked;
+      const sekBukti = document.getElementById('toggleSekBukti').checked;
+
+      showStatusBar('Menyimpan pengaturan verifikasi...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (!res.success) alert('Gagal menyimpan: ' + res.message);
+      }).saveVerifikasiSettings({ wajibVerifMandiri: wajibMandiri, wajibVerifSekretaris: wajibSekretaris, sekretarisVerifBukti: sekBukti });
+    }
+
+    async function updateFiturPresensi() {
+      const f = {
+        aktifSelfie: document.getElementById('toggleFiturSelfie').checked,
+        aktifBarcode: document.getElementById('toggleFiturBarcode').checked,
+        aktifGps: document.getElementById('toggleFiturGps').checked
+      };
+      if (!f.aktifSelfie && !f.aktifBarcode && !f.aktifGps && !(await askConfirm('Semua langkah verifikasi dimatikan. Siswa bisa presensi tanpa selfie, barcode, dan GPS. Lanjutkan?'))) {
+        loadVerifikasiSettings();
+        return;
+      }
+      showStatusBar('Menyimpan pengaturan langkah presensi...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        presensiConfig = null;
+        if (!res.success) alert('Gagal menyimpan: ' + res.message);
+      }).saveFiturPresensi(f);
+    }
+
+    async function executeClearAttendanceLogsByRange() {
+      const startDate = document.getElementById('clearStartDate').value;
+      const endDate = document.getElementById('clearEndDate').value;
+      if (!startDate || !endDate) return alert("Gagal! Admin wajib memasukkan rentang tanggal secara lengkap.");
+      if (!(await askConfirm(`Hapus log presensi dari tanggal ${startDate} sampai ${endDate}?`))) return;
+
+      showStatusBar('Memproses penghapusan...', 50);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (res.success) {
+          alert(res.message);
+          document.getElementById('clearStartDate').value = '';
+          document.getElementById('clearEndDate').value = '';
+        } else { alert('Gagal: ' + res.message); }
+      }).clearAttendanceLogsByRange(startDate, endDate);
+    }
+
+    function loadAdminGpsConfig() {
+      showStatusBar('Memuat pengaturan GPS...', 40);
+      gsr().withSuccessHandler(cfg => {
+        hideStatusBar();
+        if (cfg) {
+          document.getElementById('cfgSchoolLat').value = cfg.lat || '';
+          document.getElementById('cfgSchoolLng').value = cfg.lng || '';
+          document.getElementById('cfgSchoolRadius').value = cfg.radius || '100';
+        }
+      }).getGpsSettings();
+    }
+
+    function detectAdminCurrentLocation() {
+      if (!navigator.geolocation) return alert("Browser tidak mendukung geolocation GPS!");
+      showStatusBar('Mendeteksi posisi GPS...', 50);
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        hideStatusBar();
+        document.getElementById('cfgSchoolLat').value = pos.coords.latitude;
+        document.getElementById('cfgSchoolLng').value = pos.coords.longitude;
+        alert("Koordinat berhasil didapatkan!");
+      }, function(err) {
+        hideStatusBar();
+        alert("Gagal mendeteksi lokasi: " + err.message);
+      }, { enableHighAccuracy: true, timeout: 10000 });
+    }
+
+    function saveAdminGpsConfig(e) {
+      e.preventDefault();
+      showStatusBar('Menyimpan pengaturan GPS...', 60);
+      const payload = {
+        lat: document.getElementById('cfgSchoolLat').value.trim(),
+        lng: document.getElementById('cfgSchoolLng').value.trim(),
+        radius: document.getElementById('cfgSchoolRadius').value.trim()
+      };
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (res.success) alert(res.message);
+        else alert('Gagal: ' + res.message);
+      }).saveGpsSettings(payload);
+    }
+
+    /* ===== ADMIN > TAMPILAN (Revisi 62) ===== */
+    const THEME_PRESETS = [
+      { id: 'default',  name: 'Navy & Emas (Default)', primary: '#3a63b8', secondary: '#cf9526' },
+      { id: 'emerald',  name: 'Hijau Zamrud',          primary: '#1f8a5b', secondary: '#e0a526' },
+      { id: 'ocean',    name: 'Biru Laut',             primary: '#0e8fa3', secondary: '#f08a3c' },
+      { id: 'purple',   name: 'Ungu Kerajaan',         primary: '#7c4dc4', secondary: '#d9a21b' },
+      { id: 'maroon',   name: 'Merah Marun',           primary: '#b23a48', secondary: '#d9a21b' },
+      { id: 'sunset',   name: 'Oranye Senja',          primary: '#e0692a', secondary: '#3a63b8' },
+      { id: 'graphite', name: 'Abu Grafit',            primary: '#4b5873', secondary: '#2a9d8f' }
+    ];
+    let themeDraft = { preset: 'default', primary: '#3a63b8', secondary: '#cf9526' };
+
+    function themeMatchPreset_(primary, secondary) {
+      const p = THEME_PRESETS.find(x => x.primary === primary && x.secondary === secondary);
+      return p ? p.id : 'custom';
+    }
+
+    function renderThemePresets() {
+      const grid = document.getElementById('themePresetGrid');
+      if (!grid) return;
+      grid.innerHTML = THEME_PRESETS.map(p => {
+        const sel = themeDraft.preset === p.id;
+        const dark = resolveScale('primary', p)[800];
+        const base = resolveScale('primary', p)[500];
+        const acc = resolveScale('secondary', p)[500];
+        return `<button type="button" onclick="selectThemePreset('${p.id}')" class="text-left rounded-xl border p-2.5 bg-white hover:shadow-md transition ${sel ? 'ring-2 ring-primary-500 border-primary-500' : ''}">
+          <div class="flex h-8 rounded-lg overflow-hidden mb-2">
+            <span class="flex-1" style="background:${dark}"></span>
+            <span class="flex-1" style="background:${base}"></span>
+            <span class="flex-1" style="background:${acc}"></span>
+          </div>
+          <div class="text-[11px] font-bold text-slate-700 flex items-center justify-between gap-1">
+            <span>${p.name}</span>${sel ? '<i class="fas fa-check-circle text-primary-600"></i>' : ''}
+          </div>
+        </button>`;
+      }).join('');
+    }
+
+    function refreshThemeDraftUI_() {
+      document.getElementById('themePrimaryPicker').value = themeDraft.primary;
+      document.getElementById('themePrimaryHex').value = themeDraft.primary;
+      document.getElementById('themeSecondaryPicker').value = themeDraft.secondary;
+      document.getElementById('themeSecondaryHex').value = themeDraft.secondary;
+      updateThemePreview();
+    }
+
+    function updateThemePreview() {
+      applyAppTheme(themeDraft, document.getElementById('themePreview'));
+      renderThemePresets();
+      // Peringatan keterbacaan (kontras teks putih pada tombol/header)
+      const warn = document.getElementById('themeContrastWarn');
+      const lum = hex => {
+        const c = _thHexToRgb(hex).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+      };
+      const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
+      const p = resolveScale('primary', themeDraft), s = resolveScale('secondary', themeDraft);
+      const msgs = [];
+      if (ratio('#ffffff', p[700]) < 4.5) msgs.push('Warna utama terlalu terang: teks putih pada tombol/judul bisa sulit dibaca. Pilih warna yang lebih gelap.');
+      if (ratio(s[400], p[900]) < 3) msgs.push('Warna aksen kurang kontras terhadap header. Coba warna aksen yang lebih terang atau berbeda.');
+      warn.innerHTML = msgs.length ? '<i class="fas fa-exclamation-triangle mr-1"></i>' + msgs.join(' ') : '';
+      warn.classList.toggle('hidden', !msgs.length);
+    }
+
+    function selectThemePreset(id) {
+      const p = THEME_PRESETS.find(x => x.id === id);
+      if (!p) return;
+      themeDraft = { preset: p.id, primary: p.primary, secondary: p.secondary };
+      refreshThemeDraftUI_();
+    }
+
+    function onThemeColorInput(which, value, source) {
+      let v = String(value || '').trim();
+      if (v && v.charAt(0) !== '#') v = '#' + v;
+      if (!/^#[0-9a-fA-F]{6}$/.test(v)) return;   // abaikan sampai hex valid (6 digit)
+      v = v.toLowerCase();
+      themeDraft[which] = v;
+      themeDraft.preset = themeMatchPreset_(themeDraft.primary, themeDraft.secondary);
+      const cap = which === 'primary' ? 'Primary' : 'Secondary';
+      if (source !== 'picker') document.getElementById('theme' + cap + 'Picker').value = v;
+      if (source !== 'hex') document.getElementById('theme' + cap + 'Hex').value = v;
+      updateThemePreview();
+    }
+
+    function resetThemeToDefault() {
+      selectThemePreset('default');
+      alert('Warna dikembalikan ke default pada pratinjau. Klik "Simpan & Terapkan" agar berlaku untuk semua pengguna.');
+    }
+
+    function loadThemeSettingsAdmin() {
+      refreshThemeDraftUI_();   // tampilkan draft terakhir dulu, lalu sinkron dengan server
+      gsr().withSuccessHandler(cfg => {
+        if (!cfg) return;
+        themeDraft = { preset: cfg.preset || themeMatchPreset_(cfg.primary, cfg.secondary), primary: cfg.primary, secondary: cfg.secondary };
+        refreshThemeDraftUI_();
+      }).withFailureHandler(() => {}).getThemeSettings();
+    }
+
+    function saveThemeSettingsAdmin() {
+      showStatusBar('Menyimpan tampilan aplikasi...', 60);
+      const payload = { preset: themeDraft.preset, primary: themeDraft.primary, secondary: themeDraft.secondary };
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (res && res.success) {
+          applyAppTheme(payload);
+          try { localStorage.setItem('app_theme', JSON.stringify(payload)); } catch (e) {}
+          alert(res.message);
+        } else {
+          alert('Gagal: ' + (res ? res.message : 'tidak ada respons dari server.'));
+        }
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        alert('Gagal menyimpan tampilan: ' + (err && err.message ? err.message : err));
+      }).saveThemeSettings(payload);
+    }
+
+    /* Sinkron tema dari server saat aplikasi dibuka (semua peran). */
+    function syncThemeFromServer() {
+      if (typeof google === 'undefined' || !google.script || !google.script.run) return;
+      gsr().withSuccessHandler(cfg => {
+        if (!cfg || !cfg.primary || !cfg.secondary) return;
+        applyAppTheme(cfg);
+        try { localStorage.setItem('app_theme', JSON.stringify(cfg)); } catch (e) {}
+      }).withFailureHandler(() => {}).getThemeSettings();
+    }
+
+    function loadAdminUsers() {
+      showStatusBar('Memuat pengguna...', 50);
+      gsr().withSuccessHandler(users => {
+        hideStatusBar();
+        const tbody = document.getElementById('userTableBody');
+        tbody.innerHTML = '';
+        users.forEach((u, index) => {
+          let kelasJurusanDisplay = '-';
+          if ((u.role === 'Guru Wali Kelas' || u.role === 'Sekretaris') && u.kelas && u.kelas !== '-') {
+            kelasJurusanDisplay = `${u.kelas}-${u.jurusan} (${u.role})`;
+          } else {
+            kelasJurusanDisplay = `(${u.role})`;
+          }
+          tbody.innerHTML += `
+            <tr class="hover:bg-slate-50">
+              <td class="p-4 text-center font-semibold text-slate-500">${index + 1}</td>
+              <td class="p-4 font-semibold">${escH_(u.nama)}</td>
+              <td class="p-4">
+                <div class="font-semibold">${escH_(u.username)}</div>
+                <div class="text-xs text-slate-500 font-mono">Password: ${u.password === undefined || u.password === null || u.password === '' ? '-' : escH_(u.password)}</div>
+              </td>
+              <td class="p-4">${u.role}</td>
+              <td class="p-4">${kelasJurusanDisplay}</td>
+              <td class="p-4 text-center space-x-2">
+                <button data-u="${escH_(JSON.stringify(u))}" onclick="openEditUserModal(JSON.parse(this.dataset.u))" class="text-primary-600 text-xs font-bold hover:underline"><i class="fas fa-edit"></i> Edit</button>
+                <button data-u="${escH_(u.username)}" onclick="deleteUser(this.dataset.u)" class="text-rose-600 text-xs font-bold hover:underline"><i class="fas fa-trash"></i> Hapus</button>
+              </td>
+            </tr>
+          `;
+        });
+      }).getUsers();
+    }
+    
+    function toggleUserClassSection() {
+      const role = document.getElementById('modalRole').value;
+      const container = document.getElementById('modalClassJurusanContainer');
+      const isBc = role === 'Barcode';
+      document.getElementById('modalNamaWrap').classList.toggle('hidden', isBc);
+      document.getElementById('modalNama').required = !isBc;
+      if (role === 'Guru Wali Kelas' || role === 'Sekretaris') container.classList.remove('hidden');
+      else container.classList.add('hidden');
+    }
+
+    function openUserModal() { 
+      document.getElementById('userModalTitle').innerText = 'Tambah Akun Pengguna';
+      document.getElementById('modalUsername').value = '';
+      document.getElementById('modalOldUsername').value = '';
+      document.getElementById('modalPassword').value = '';
+      document.getElementById('modalNama').value = '';
+      document.getElementById('modalRole').value = 'Guru Wali Kelas';
+      document.getElementById('modalKelas').value = 'X';
+      document.getElementById('modalJurusan').value = 'AKL';
+      toggleUserClassSection();
+      document.getElementById('userModal').classList.remove('hidden'); 
+    }
+
+    function openEditUserModal(user) {
+      document.getElementById('userModalTitle').innerText = 'Edit Akun Pengguna';
+      document.getElementById('modalUsername').value = user.username;
+      document.getElementById('modalOldUsername').value = user.username;
+      document.getElementById('modalPassword').value = user.password;
+      document.getElementById('modalNama').value = user.nama;
+      document.getElementById('modalRole').value = user.role;
+      toggleUserClassSection();
+      if (user.role === 'Guru Wali Kelas' || user.role === 'Sekretaris') {
+        document.getElementById('modalKelas').value = user.kelas && user.kelas !== '-' ? user.kelas : 'X';
+        document.getElementById('modalJurusan').value = user.jurusan && user.jurusan !== '-' ? user.jurusan : 'AKL';
+      }
+      document.getElementById('userModal').classList.remove('hidden');
+    }
+
+    function closeUserModal() { document.getElementById('userModal').classList.add('hidden'); }
+    
+    function saveUserSubmit(e) {
+      e.preventDefault();
+      showStatusBar('Menyimpan...', 50);
+      const role = document.getElementById('modalRole').value;
+      const data = { 
+        username: document.getElementById('modalUsername').value.trim(), 
+        oldUsername: document.getElementById('modalOldUsername').value, 
+        password: document.getElementById('modalPassword').value, 
+        nama: role === 'Barcode' ? 'Barcode' : document.getElementById('modalNama').value, 
+        role: role, 
+        kelas: (role === 'Guru Wali Kelas' || role === 'Sekretaris') ? document.getElementById('modalKelas').value : '-', 
+        jurusan: (role === 'Guru Wali Kelas' || role === 'Sekretaris') ? document.getElementById('modalJurusan').value : '-',
+        statusAkses: 'Aktif'
+      };
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (res && res.success === false) { alert(res.message || 'Gagal menyimpan akun.'); return; }
+        closeUserModal(); loadAdminUsers();
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      }).saveUser(data);
+    }
+    
+    async function deleteUser(u) { 
+      if((await askConfirm('Hapus akun?'))) {
+        showStatusBar('Menghapus...', 50);
+        gsr().withSuccessHandler(() => { hideStatusBar(); loadAdminUsers(); }).deleteUser(u);
+      }
+    }
+
+    // Tab Barcode & Verifikasi Barcode wali kelas hanya tampil jika saklar "Scan Barcode" di panel admin aktif.
+    function refreshWaliBarcodeTabs() {
+      if (!currentUser || currentUser.role !== 'Guru Wali Kelas') return;
+      const apply = (aktif) => {
+        ['tabBarcodeBtn', 'tabVerifBarcodeBtn'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.style.display = aktif ? 'inline-block' : 'none';
+        });
+        const sedangDiTabBarcode = !document.getElementById('waliTabBarcode').classList.contains('hidden') ||
+                                   !document.getElementById('waliTabVerifBarcode').classList.contains('hidden');
+        if (!aktif && sedangDiTabBarcode) switchWaliTab('input');
+      };
+      fetchPresensiConfig().then(cfg => apply(!!cfg && cfg.aktifBarcode === true), () => apply(true));
+    }
+
+    function switchWaliTab(tab) {
+      const tabIds = ['waliTabInput', 'waliTabRekap', 'waliTabMatrix', 'waliTabBuktiFoto', 'waliTabSiswa', 'waliTabAkun', 'waliTabBarcode', 'waliTabVerifBarcode', 'waliTabRekapAbsensi', 'waliTabKeterangan'];
+      tabIds.forEach((id, idx) => {
+        let active = false;
+        if (currentUser && currentUser.role === 'Sekretaris') {
+          active = (tab === 'rekapabsensi') ? (idx === 8) : (idx === 0);
+        } else {
+          active = (tab === 'input' && idx === 0) || 
+                   (tab === 'rekap' && idx === 1) || 
+                   (tab === 'matrix' && idx === 2) || 
+                   (tab === 'buktifoto' && idx === 3) || 
+                   (tab === 'siswa' && idx === 4) || 
+                   (tab === 'akun' && idx === 5) ||
+                   (tab === 'barcode' && idx === 6) ||
+                   (tab === 'verifbarcode' && idx === 7) ||
+                   (tab === 'rekapabsensi' && idx === 8) ||
+                   (tab === 'keterangan' && idx === 9);
+        }
+        document.getElementById(id).classList.toggle('hidden', !active);
+      });
+
+      const activeClass = "tab-btn tab-btn-active";
+      const inactiveClass = "tab-btn";
+
+      ['tabInputBtn', 'tabRekapBtn', 'tabMatrixBtn', 'tabBuktiFotoBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn', 'tabRekapAbsensiBtn', 'tabKeteranganBtn'].forEach(btnId => {
+        const el = document.getElementById(btnId);
+        if (el) {
+          const match = (btnId.replace('tab', '').replace('Btn', '').toLowerCase() === tab);
+          el.className = match ? activeClass : inactiveClass;
+        }
+      });
+
+      refreshWaliBarcodeTabs();
+      if (tab === 'barcode') startBarcodeTab(); else stopBarcodeTab();
+      if (tab === 'verifbarcode') initVerifBarcodeTab();
+
+      if (tab === 'rekap') {
+        if (appCache.monthlyReportData) renderWaliMonthlyReport(appCache.monthlyReportData);
+        else loadWaliMonthlyReport();
+      } else if (tab === 'matrix') {
+        // Pertama kali dibuka: otomatis pilih bulan & tahun terbaru (bulan berjalan)
+        const currentMonthStr = String(new Date().getMonth() + 1).padStart(2, '0');
+        const monthEl = document.getElementById('matrixReportMonth');
+        const yearEl = document.getElementById('matrixReportYear');
+        let firstOpenMatrix = false;
+        if (!window._matrixFilterInit) {
+          window._matrixFilterInit = true;
+          firstOpenMatrix = true;
+          if (monthEl) monthEl.value = currentMonthStr;
+          if (yearEl) {
+            const cy = new Date().getFullYear().toString();
+            if (Array.from(yearEl.options).some(o => o.value === cy)) yearEl.value = cy;
+          }
+        }
+
+        if (!firstOpenMatrix && appCache.matrixReportData) renderWaliMatrixReport(appCache.matrixReportData);
+        else loadWaliMatrixReport();
+      } else if (tab === 'rekapabsensi') {
+        initSekretarisRekapFilter();
+        loadSekretarisRekap();
+      } else if (tab === 'siswa') {
+        if (appCache.studentsData) renderStudentRows(appCache.studentsData);
+        else loadWaliData();
+      } else if (tab === 'akun') {
+        loadMyAccountForm();
+      }
+    }
+
+    function switchKepsekTab(sec) {
+      const isMatrix = (sec === 'matrix');
+      const isBuktiFoto = (sec === 'buktifoto');
+      const isAkun = (sec === 'akun');
+      const isKet = (sec === 'keterangan');
+
+      document.getElementById('kepsekSectionKeterangan').classList.toggle('hidden', !isKet);
+      document.getElementById('kepsekTabKeteranganBtn').className = isKet ? "tab-btn tab-btn-active" : "tab-btn";
+      document.getElementById('kepsekSectionMatrix').classList.toggle('hidden', !isMatrix);
+      document.getElementById('kepsekSectionBuktiFoto').classList.toggle('hidden', !isBuktiFoto);
+      document.getElementById('kepsekSectionAkun').classList.toggle('hidden', !isAkun);
+
+      const activeClass = "tab-btn tab-btn-active";
+      const inactiveClass = "tab-btn";
+
+      document.getElementById('kepsekTabMatrixBtn').className = isMatrix ? activeClass : inactiveClass;
+      document.getElementById('kepsekTabBuktiFotoBtn').className = isBuktiFoto ? activeClass : inactiveClass;
+      document.getElementById('kepsekTabAkunBtn').className = isAkun ? activeClass : inactiveClass;
+
+      if (isMatrix) loadKepsekDefaultSummary();
+      else if (isAkun) loadKepsekAccountForm();
+    }
+
+    function loadWaliPhotoLogs() {
+      const dateVal = document.getElementById('filterWaliPhotoDate').value;
+      const monthVal = document.getElementById('filterWaliPhotoMonth').value;
+      const yearVal = document.getElementById('filterWaliPhotoYear').value;
+
+      showStatusBar('Memuat bukti foto...', 40);
+      const filters = {
+        date: dateVal,
+        month: monthVal,
+        year: yearVal,
+        grade: currentUser.kelas,
+        major: currentUser.jurusan,
+        includeBarcode: true
+      };
+
+      // Kolom "Verifikasi Barcode dari" hanya tampil bila saklar Scan Barcode di panel admin aktif.
+      const cfgP = fetchPresensiConfig().then(c => !!c && c.aktifBarcode === true, () => true);
+      gsr().withFailureHandler(() => { hideStatusBar(); alert('Gagal memuat bukti foto. Coba lagi.'); }).withSuccessHandler(async logs => {
+        const showBarcode = await cfgP;
+        hideStatusBar();
+        document.getElementById('waliPhotoInitialState').classList.add('hidden');
+        document.getElementById('waliPhotoContentWrapper').classList.remove('hidden');
+        document.getElementById('waliPhotoThVerif').style.display = showBarcode ? '' : 'none';
+
+        const tbody = document.getElementById('waliPhotoTableBody');
+        tbody.innerHTML = '';
+
+        if (!logs || logs.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="${showBarcode ? 7 : 6}" class="p-4 text-center text-slate-400">Tidak ada data bukti foto yang sesuai filter.</td></tr>`;
+          return;
+        }
+
+        logs.forEach((item, index) => {
+          tbody.innerHTML += `
+            <tr class="hover:bg-slate-50">
+              <td class="p-4 text-center font-semibold text-slate-500">${index + 1}</td>
+              <td class="p-4">${item.tanggal}</td>
+              <td class="p-4">${item.nisn}</td>
+              <td class="p-4 font-bold">${escH_(item.nama)}</td>
+              <td class="p-4 text-center"><span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-xs font-bold rounded">${item.status}</span></td>
+              ${showBarcode ? `<td class="p-4">${item.verifNama ? '<span class="inline-flex items-center px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold"><i class="fas fa-check mr-1"></i>' + escH_(item.verifNama) + '</span>' : '<span class="text-slate-400">-</span>'}</td>` : ''}
+              <td class="p-4 text-center">
+                ${item.fotoUrl ? `<button type="button" data-url="${item.fotoUrl}" onclick="bukaFoto(this.dataset.url)" class="px-3 py-1 bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold rounded-lg shadow-sm inline-flex items-center"><i class="fas fa-camera mr-1"></i> Lihat Foto Selfie</button>` : `<span class="text-xs text-slate-400 italic">${showBarcode ? 'Tanpa foto (presensi via barcode)' : 'Tanpa foto'}</span>`}
+              </td>
+            </tr>
+          `;
+        });
+      }).getAttendancePhotoLogs(filters);
+    }
+
+    // Pemuat tab Keterangan: dipakai panel Kepala Sekolah/Wakil (prefix 'ket') dan panel Wali Kelas (prefix 'waliKet').
+    function ketSelText_(id) { const el = document.getElementById(id); return el && el.selectedIndex >= 0 ? el.options[el.selectedIndex].text : ''; }
+    function ketTglIndo_(iso) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+      if (!m) return String(iso || '');
+      return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+    // Tanggal opsional. Cara kerja sama dengan tab Bukti Foto: tanggal, bulan, dan tahun dikirim bersamaan.
+    // Agar selalu cocok, saat tanggal dipilih Bulan & Tahun otomatis menyesuaikan bulan/tahun tanggal tsb.
+    function onKetDateChange_(p) {
+      const idp = p === 'ket' ? 'filterKet' : 'filterWaliKet';
+      const v = document.getElementById(idp + 'Date').value;
+      const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(v || '');
+      if (!m) return;
+      const mo = document.getElementById(idp + 'Month'), yr = document.getElementById(idp + 'Year');
+      if (mo) mo.value = m[2];
+      if (yr) {
+        if (!Array.from(yr.options).some(o => o.value === m[1])) yr.add(new Option(m[1], m[1]));
+        yr.value = m[1];
+      }
+    }
+    function clearKetDate_(p) {
+      document.getElementById((p === 'ket' ? 'filterKet' : 'filterWaliKet') + 'Date').value = '';
+    }
+    function loadKeteranganLogs() {
+      const date = document.getElementById('filterKetDate').value;
+      const periode = date ? 'Tanggal ' + ketTglIndo_(date) : ketSelText_('filterKetMonth') + ' ' + document.getElementById('filterKetYear').value;
+      const fileTag = date || (document.getElementById('filterKetYear').value + '-' + document.getElementById('filterKetMonth').value);
+      runKeteranganLoad_('ket', {
+        date: date,
+        month: document.getElementById('filterKetMonth').value,
+        year: document.getElementById('filterKetYear').value,
+        grade: document.getElementById('filterKetGrade').value,
+        major: document.getElementById('filterKetMajor').value
+      }, { periode: periode, fileTag: fileTag + '-' + document.getElementById('filterKetGrade').value + '-' + document.getElementById('filterKetMajor').value,
+           kelasInfo: 'Kelas ' + document.getElementById('filterKetGrade').value + ' - ' + document.getElementById('filterKetMajor').value });
+    }
+    function loadWaliKeteranganLogs() {
+      const date = document.getElementById('filterWaliKetDate').value;
+      const periode = date ? 'Tanggal ' + ketTglIndo_(date) : ketSelText_('filterWaliKetMonth') + ' ' + document.getElementById('filterWaliKetYear').value;
+      const fileTag = date || (document.getElementById('filterWaliKetYear').value + '-' + document.getElementById('filterWaliKetMonth').value);
+      runKeteranganLoad_('waliKet', {
+        date: date,
+        month: document.getElementById('filterWaliKetMonth').value,
+        year: document.getElementById('filterWaliKetYear').value,
+        grade: currentUser.kelas,
+        major: currentUser.jurusan
+      }, { periode: periode, fileTag: fileTag + '-' + currentUser.kelas + '-' + currentUser.jurusan,
+           kelasInfo: 'Kelas ' + currentUser.kelas + ' - ' + currentUser.jurusan });
+    }
+    window._ketLast = window._ketLast || {};
+    function runKeteranganLoad_(p, filters, meta) {
+      meta = meta || {};
+      showStatusBar('Memuat keterangan siswa...', 40);
+      gsr().withFailureHandler(() => { hideStatusBar(); alert('Gagal memuat keterangan siswa. Coba lagi.'); }).withSuccessHandler(logs => {
+        hideStatusBar();
+        window._ketLast[p] = { logs: logs || [], meta: meta };   // dipakai tombol Download PDF
+        document.getElementById(p + 'InitialState').classList.add('hidden');
+        document.getElementById(p + 'ContentWrapper').classList.remove('hidden');
+        const tbody = document.getElementById(p + 'TableBody');
+        tbody.innerHTML = '';
+        document.getElementById(p + 'Summary').innerText = (logs ? logs.length : 0) + ' data keterangan' + (meta.periode ? ' \u2022 ' + meta.periode : '');
+        const showLok = !!(logs && logs.length && logs[0].lokasiAktif);   // mengikuti saklar admin
+        document.getElementById(p + 'ThLokasi').classList.toggle('hidden', !showLok);
+        if (!logs || logs.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="9" class="p-4 text-center text-slate-400">Tidak ada keterangan siswa yang sesuai filter.</td></tr>`;
+          return;
+        }
+        const stCls = { PKL: 'bg-purple-100 text-purple-800', Izin: 'bg-blue-100 text-blue-800', Sakit: 'bg-amber-100 text-amber-800', PJJ: 'bg-teal-100 text-teal-800' };
+        logs.forEach((item, index) => {
+          tbody.innerHTML += `
+            <tr class="hover:bg-slate-50">
+              <td class="p-4 text-center font-semibold text-slate-500">${index + 1}</td>
+              <td class="p-4">${item.tanggal}</td>
+              <td class="p-4">${item.nisn}</td>
+              <td class="p-4 font-bold">${escHtmlKet_(item.nama)}</td>
+              <td class="p-4">${item.kelas} - ${item.jurusan}</td>
+              <td class="p-4 text-center"><span class="px-2 py-0.5 ${stCls[item.status] || 'bg-slate-100 text-slate-700'} text-xs font-bold rounded">${item.status}</span></td>
+              <td class="p-4 text-xs">${escHtmlKet_(item.alasan)}</td>
+              <td class="p-4 text-center">${item.fotoUrl ? `<button type="button" data-url="${item.fotoUrl}" onclick="bukaFoto(this.dataset.url)" class="px-3 py-1 bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold rounded-lg shadow-sm inline-flex items-center"><i class="fas fa-camera mr-1"></i> Lihat Foto</button>` : '<span class="text-xs text-slate-400 italic">Foto belum tersedia</span>'}</td>
+              ${showLok ? `<td class="p-4 text-center">${lokasiCell_(item.lokasi)}</td>` : ''}
+            </tr>`;
+        });
+      }).getKeteranganLogs(filters);
+    }
+
+    function loadGlobalPhotoLogs() {
+      const dateVal = document.getElementById('filterGlobalPhotoDate').value;
+      const monthVal = document.getElementById('filterGlobalPhotoMonth').value;
+      const yearVal = document.getElementById('filterGlobalPhotoYear').value;
+      const gradeVal = document.getElementById('filterGlobalPhotoGrade').value;
+      const majorVal = document.getElementById('filterGlobalPhotoMajor').value;
+
+      showStatusBar('Memuat seluruh bukti foto...', 40);
+      const filters = {
+        date: dateVal,
+        month: monthVal,
+        year: yearVal,
+        grade: gradeVal,
+        major: majorVal
+      };
+
+      gsr().withSuccessHandler(logs => {
+        hideStatusBar();
+        document.getElementById('globalPhotoInitialState').classList.add('hidden');
+        document.getElementById('globalPhotoContentWrapper').classList.remove('hidden');
+
+        const tbody = document.getElementById('globalPhotoTableBody');
+        tbody.innerHTML = '';
+
+        if (!logs || logs.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" class="p-4 text-center text-slate-400">Tidak ada data bukti foto yang sesuai filter.</td></tr>`;
+          return;
+        }
+
+        logs.forEach((item, index) => {
+          tbody.innerHTML += `
+            <tr class="hover:bg-slate-50">
+              <td class="p-4 text-center font-semibold text-slate-500">${index + 1}</td>
+              <td class="p-4">${item.tanggal}</td>
+              <td class="p-4">${item.nisn}</td>
+              <td class="p-4 font-bold">${escH_(item.nama)}</td>
+              <td class="p-4">${item.kelas} - ${item.jurusan}</td>
+              <td class="p-4 text-center"><span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-xs font-bold rounded">${item.status}</span></td>
+              <td class="p-4 text-center">
+                <button type="button" data-url="${item.fotoUrl}" onclick="bukaFoto(this.dataset.url)" class="px-3 py-1 bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold rounded-lg shadow-sm inline-flex items-center">
+                  <i class="fas fa-camera mr-1"></i> Lihat Foto Selfie
+                </button>
+              </td>
+            </tr>
+          `;
+        });
+      }).getAttendancePhotoLogs(filters);
+    }
+
+    function loadMyAccountForm() {
+      if (!currentUser) return;
+      showStatusBar('Memuat akun...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (res.success && res.user) {
+          currentUser.password = res.user.password;
+          document.getElementById('myAccountUsername').value = res.user.username || '';
+          document.getElementById('myAccountPassword').value = res.user.password || '';
+          document.getElementById('myAccountNama').value = res.user.nama || '';
+          document.getElementById('myAccountRoleDisplay').innerText = res.user.role || '-';
+          document.getElementById('myAccountKelasDisplay').innerText = (res.user.kelas && res.user.kelas !== '-') ? `${res.user.kelas} - ${res.user.jurusan}` : 'Non-Kelas';
+        }
+      }).getMyAccountInfo(currentUser.username);
+    }
+
+    function loadKepsekAccountForm() {
+      if (!currentUser) return;
+      showStatusBar('Memuat akun...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (res.success && res.user) {
+          currentUser.password = res.user.password;
+          document.getElementById('kepsekAccountUsername').value = res.user.username || '';
+          document.getElementById('kepsekAccountPassword').value = res.user.password || '';
+          document.getElementById('kepsekAccountNama').value = res.user.nama || '';
+          document.getElementById('kepsekAccountRoleDisplay').innerText = res.user.role || '-';
+        }
+      }).getMyAccountInfo(currentUser.username);
+    }
+
+    function handleUpdateMyAccount(e) {
+      e.preventDefault();
+      showStatusBar('Memperbarui akun...', 50);
+      
+      const isKepsekRole = (currentUser.role === 'Kepala Sekolah' || currentUser.role === 'Wakil Kepala Sekolah');
+      const uField = isKepsekRole ? 'kepsekAccountUsername' : 'myAccountUsername';
+      const pField = isKepsekRole ? 'kepsekAccountPassword' : 'myAccountPassword';
+      const nField = isKepsekRole ? 'kepsekAccountNama' : 'myAccountNama';
+
+      const payload = {
+        oldUsername: currentUser.username,
+        newUsername: document.getElementById(uField).value.trim(),
+        newPassword: document.getElementById(pField).value.trim(),
+        newNama: document.getElementById(nField).value.trim()
+      };
+
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (res.success) {
+          alert(res.message);
+          currentUser.username = res.updatedUser.username;
+          currentUser.nama = res.updatedUser.nama;
+          currentUser.password = payload.newPassword;
+          saveSession(currentUser);
+          document.getElementById('userNameDisplay').innerText = currentUser.nama;
+        } else { alert('Gagal: ' + res.message); }
+      }).updateMyAccount(payload);
+    }
+
+    function loadWaliData() {
+      showStatusBar('Memuat data siswa...', 40);
+      gsr().withSuccessHandler(students => {
+        hideStatusBar();
+        currentStudentsList = students;
+        appCache.studentsData = students;
+        renderStudentRows(students);
+        loadAttendanceByDate();
+      }).getStudents(currentUser.kelas, currentUser.jurusan);
+    }
+
+    function loadAttendanceByDate() {
+      const date = document.getElementById('attendanceDate').value;
+      showStatusBar('Memuat presensi tanggal ' + date + '...', 50);
+      // Saklar admin: apakah sekretaris boleh memilih PKL/Izin/Sakit/PJJ (hanya relevan untuk role Sekretaris)
+      const vsPromise = currentUser.role === 'Sekretaris'
+        ? new Promise(resolve => gsr().withSuccessHandler(resolve).withFailureHandler(() => resolve(null)).getVerifikasiSettings())
+        : Promise.resolve(null);
+      gsr().withSuccessHandler(data0 => { vsPromise.then(vs => {
+        const data = data0;
+        applyPjjVisibility(data && data.pjjAktif === true);
+        const allowBukti = currentUser.role !== 'Sekretaris' || !!(vs && vs.sekretarisVerifBukti === true);
+        hideStatusBar();
+        const tbody = document.getElementById('attendanceTableBody');
+        tbody.innerHTML = '';
+        const recMap = {};
+        data.existingRecords.forEach(r => recMap[r.nisn] = r);
+
+        data.students.forEach((s, index) => {
+          const rec = recMap[s.nisn];
+          let currentStatus = rec ? rec.status : '';   // REVISI 92: belum ada record = kosong (wajib dipilih manual)
+          let ketBadge = rec ? `<span class="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-full">${rec.catatan}</span>` : `<span class="px-2.5 py-1 bg-slate-100 text-slate-500 text-xs font-medium rounded-full">Belum Mengisi</span>`;
+
+          let ketDetail = '';
+          if (rec && (rec.alasan || rec.fotoUrl)) {
+            ketDetail = `<div class="mt-1.5 text-left max-w-xs mx-auto">` +
+              (rec.alasan ? `<p class="text-[11px] text-slate-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1"><b>Ket:</b> ${escHtmlKet_(rec.alasan)}</p>` : '') +
+              (rec.fotoUrl ? `<button type="button" data-url="${rec.fotoUrl}" onclick="bukaFoto(this.dataset.url)" class="inline-flex items-center mt-1 text-[11px] font-bold text-primary-700 hover:underline"><i class="fas fa-camera mr-1"></i>Lihat foto bukti</button>` : '') +
+              `</div>`;
+          }
+
+          // PKL / Izin / Sakit / PJJ: terkunci bagi sekretaris kecuali saklar admin "Sekretaris Boleh Verifikasi" aktif
+          const lockedForSek = !!(rec && currentUser.role === 'Sekretaris' && !allowBukti && ['PKL', 'Izin', 'Sakit', 'PJJ'].includes(rec.status));
+          const delBtn = rec
+            ? `<button onclick="deleteStudentStatus('${s.nisn}')" title="Hapus status presensi (kembali Belum Mengisi)" class="bg-rose-600 hover:bg-rose-700 text-white w-8 h-8 rounded-lg text-xs shadow transition inline-flex items-center justify-center"><i class="fas fa-trash-alt"></i></button>`
+            : '';
+          let actionBtn = lockedForSek
+            ? `<span class="inline-flex items-center px-2.5 py-1 bg-slate-100 text-slate-500 text-[11px] font-bold rounded-lg"><i class="fas fa-lock mr-1"></i>Hanya Wali Kelas</span>`
+            : `<div class="inline-flex items-center gap-2"><button data-nisn="${escH_(s.nisn)}" data-nama="${escH_(s.nama)}" onclick="verifySingleStudent(this.dataset.nisn, this.dataset.nama)" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow transition"><i class="fas fa-save mr-1"></i> Simpan</button>${delBtn}</div>`;
+          let statusSelectHtml = `
+            <select id="st_${s.nisn}" ${lockedForSek ? 'disabled title="Hanya wali kelas yang dapat mengubah/memverifikasi status ini"' : ''} class="border p-1.5 rounded text-xs font-bold bg-white focus:ring-2 focus:ring-primary-500 ${lockedForSek ? 'opacity-60 cursor-not-allowed' : ''}">
+              ${currentStatus === '' ? '<option value="" selected disabled>-- Pilih --</option>' : ''}
+              ${['Hadir', 'PKL', 'Izin', 'Sakit', 'PJJ', 'Alpa'].filter(o => (o !== 'PJJ' || data.pjjAktif === true)).filter(o => allowBukti || !['PKL', 'Izin', 'Sakit', 'PJJ'].includes(o) || o === currentStatus).map(o => `<option value="${o}" ${currentStatus===o?'selected':''}>${o}</option>`).join('')}
+            </select>
+          `;
+
+          tbody.innerHTML += `
+            <tr class="clickable-row hover:bg-slate-50" onclick="handleStudentRowClick(event, this)">
+              <td class="p-4 text-center font-semibold text-slate-500">${index + 1}</td>
+              <td class="p-4">${s.nisn}</td>
+              <td class="p-4 font-bold">${escH_(s.nama)}</td>
+              <td class="p-4 text-center">${statusSelectHtml}</td>
+              <td class="p-4 text-center">${ketBadge}${ketDetail}</td>
+              <td class="p-4 text-center">${actionBtn}</td>
+            </tr>
+          `;
+        });
+      }); }).getAttendanceForDate(currentUser.kelas, currentUser.jurusan, date);
+    }
+
+    function verifySingleStudent(nisn, nama) {
+      const date = document.getElementById('attendanceDate').value;
+      const selectEl = document.getElementById(`st_${nisn}`);
+      if (!selectEl) return alert('Data tidak ditemukan!');
+      if (selectEl.disabled) return alert('Status ' + pjjLbl_() + ' hanya dapat diubah dan diverifikasi oleh Wali Kelas.');
+      const status = selectEl.value;
+      if (!status) return alert('Pilih status presensi untuk ' + nama + ' terlebih dahulu sebelum menyimpan.');
+
+      showStatusBar('Menyimpan status presensi...', 50);
+      let noteText = currentUser.role === 'Sekretaris' ? 'Menunggu Verifikasi Wali Kelas' : 'Terverifikasi Wali Kelas';
+
+      const records = [{ tanggal: date, nisn: nisn, nama: nama, kelas: currentUser.kelas, jurusan: currentUser.jurusan, status: status, catatan: noteText, byRole: currentUser.role }];
+
+      gsr().withSuccessHandler((res) => {
+        hideStatusBar();
+        if (res && res.success === false) alert(res.message || 'Gagal menyimpan status presensi.');
+        else if (res && res.skippedLocked) alert('Tidak disimpan: status ' + pjjLbl_() + ' hanya dapat diubah dan diverifikasi oleh Wali Kelas.');
+        else alert(`Status presensi ${nama} berhasil disimpan!`);
+        appCache.monthlyReportData = null;
+        appCache.matrixReportData = null;
+        loadAttendanceByDate();
+      }).saveAttendance(records);
+    }
+
+    // ===== UPDATE SEMUA (khusus Wali Kelas; cara kerja sama dengan revisi 76) =====
+    // Mengirim SEMUA siswa di kelas dengan status yang tampil di dropdown (berubah atau tidak).
+    // Baris yang terkunci (disabled) dilewati.
+    function saveAllAttendance() {
+      if (!currentUser || currentUser.role !== 'Guru Wali Kelas') return alert('Fitur Update Semua hanya untuk Wali Kelas.');
+      const date = document.getElementById('attendanceDate').value;
+      if (!date) return alert('Pilih tanggal!');
+
+      const btn = document.getElementById('btnSimpanSemua');
+      if (btn) btn.disabled = true;
+      showStatusBar('Menyimpan semua data presensi...', 60);
+
+      const noteText = currentUser.role === 'Sekretaris' ? 'Menunggu Verifikasi Wali Kelas' : 'Terverifikasi Wali Kelas';
+      const recordsToSave = [];
+      let belumDipilih = 0;
+      (currentStudentsList || []).forEach(s => {
+        const selectEl = document.getElementById(`st_${s.nisn}`);
+        if (selectEl && selectEl.disabled) return;   // terkunci (PKL/Izin/Sakit/PJJ): hanya wali kelas
+        const status = selectEl ? selectEl.value : '';
+        if (!status) { belumDipilih++; return; }     // REVISI 92: dihitung, lalu seluruh simpan ditolak di bawah
+        recordsToSave.push({ tanggal: date, nisn: s.nisn, nama: s.nama, kelas: s.kelas || currentUser.kelas, jurusan: s.jurusan || currentUser.jurusan, status: status, catatan: noteText, byRole: currentUser.role });
+      });
+
+      // REVISI 92: masih ada siswa yang statusnya kosong -> tolak seluruh simpan
+      if (belumDipilih > 0) {
+        hideStatusBar();
+        if (btn) btn.disabled = false;
+        return alert('Simpan Semua dibatalkan: masih ada ' + belumDipilih + ' siswa yang statusnya belum dipilih.\n\nLengkapi status semua siswa (kolom "-- Pilih --") terlebih dahulu, lalu tekan Simpan Semua lagi.');
+      }
+      if (recordsToSave.length === 0) {
+        hideStatusBar();
+        if (btn) btn.disabled = false;
+        return alert('Tidak ada data presensi yang dapat disimpan.');
+      }
+
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (btn) btn.disabled = false;
+        if (res && res.success !== false) {
+          alert(res.skippedLocked ? 'Data presensi di-update. Baris berstatus ' + pjjLbl_() + ' tidak diubah karena hanya dapat diverifikasi Wali Kelas.' : 'Semua data presensi berhasil disimpan!');
+          appCache.monthlyReportData = null;
+          appCache.matrixReportData = null;
+          loadAttendanceByDate();
+        } else { alert('Gagal: ' + ((res && res.message) || 'tidak ada respons dari server')); }
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        if (btn) btn.disabled = false;
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      }).saveAttendance(recordsToSave);
+    }
+
+    async function deleteStudentStatus(nisn) {
+      const date = document.getElementById('attendanceDate').value;
+      const stu = (currentStudentsList || []).find(s => String(s.nisn) === String(nisn));
+      const nama = stu ? stu.nama : nisn;
+      if (!(await askConfirm(`Hapus status presensi ${nama} pada tanggal ${date}?\n\nSiswa akan kembali "Belum Mengisi" dan bisa presensi ulang. Foto bukti di Google Drive juga ikut dihapus.`))) return;
+
+      showStatusBar('Menghapus status presensi...', 50);
+      gsr()
+        .withSuccessHandler(res => {
+          hideStatusBar();
+          alert(res && res.message ? res.message : 'Selesai.');
+          appCache.monthlyReportData = null;
+          appCache.matrixReportData = null;
+          loadAttendanceByDate();
+        })
+        .withFailureHandler(err => {
+          hideStatusBar();
+          alert('Gagal menghapus: ' + (err && err.message ? err.message : err));
+        })
+        .deleteAttendanceStatus(nisn, date, currentUser.kelas, currentUser.jurusan, currentUser.role);
+    }
+
+    function loadWaliMonthlyReport() {
+      const m = document.getElementById('waliReportMonth').value;
+      const y = document.getElementById('waliReportYear').value;
+      const searchMonth = (m !== 'ALL' && y !== 'ALL') ? `${y}-${m}` : 'ALL';
+      showStatusBar('Menghitung rekap bulanan...', 50);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        appCache.monthlyReportData = res;
+        renderWaliMonthlyReport(res);
+      }).getWaliMonthlyReport(currentUser.kelas, currentUser.jurusan, searchMonth);
+    }
+
+    function renderWaliMonthlyReport(res) {
+      applyPjjVisibility(res && res.pjjAktif === true);
+      const tbody = document.getElementById('waliReportTableBody');
+      tbody.innerHTML = '';
+      res.records.forEach((r, index) => {
+        tbody.innerHTML += `
+          <tr class="clickable-row hover:bg-slate-50" onclick="highlightRow(this)">
+            <td class="p-4 text-center font-semibold text-slate-500">${index + 1}</td>
+            <td class="p-4">${r.nisn}</td>
+            <td class="p-4 font-bold">${escH_(r.nama)}</td>
+            <td class="p-4 text-center text-emerald-600">${r.hadir}</td>
+            <td class="p-4 text-center text-purple-600">${r.pkl}</td>
+            <td class="p-4 text-center text-blue-600">${r.izin}</td>
+            <td class="p-4 text-center text-secondary-600">${r.sakit}</td>
+            <td class="p-4 text-center text-teal-600 pjj-el">${r.pjj}</td>
+            <td class="p-4 text-center font-bold text-rose-700">${r.alpa}</td>
+          </tr>
+        `;
+      });
+    }
+
+    // ===== Tab "Rekap Presensi" (Sekretaris): daftar siswa + jumlah presensi per bulan =====
+    function initSekretarisRekapFilter() {
+      const monthEl = document.getElementById('sekRekapMonth');
+      const yearEl = document.getElementById('sekRekapYear');
+      if (!monthEl || !yearEl || window._sekRekapInit) return;
+      window._sekRekapInit = true;   // hanya saat pertama dibuka: otomatis ke bulan & tahun terbaru
+      const now = new Date();
+      const cy = now.getFullYear();
+      let yHtml = '';
+      for (let y = cy; y >= cy - 3; y--) yHtml += `<option value="${y}">${y}</option>`;
+      yearEl.innerHTML = yHtml;
+      yearEl.value = String(cy);
+      monthEl.value = String(now.getMonth() + 1).padStart(2, '0');
+      // Default status: Alpa
+      const stEl = document.getElementById('sekRekapStatus');
+      if (stEl) stEl.value = 'alpa';
+    }
+
+    const SEK_STATUS_COLS = [
+      { key: 'hadir', label: 'Hadir', th: 'text-emerald-700', td: 'text-emerald-600' },
+      { key: 'pkl',   label: 'PKL',   th: 'text-purple-700',  td: 'text-purple-600' },
+      { key: 'izin',  label: 'Izin',  th: 'text-blue-700',    td: 'text-blue-600' },
+      { key: 'sakit', label: 'Sakit', th: 'text-amber-700',   td: 'text-amber-600' },
+      { key: 'pjj',   label: 'PJJ',   th: 'text-teal-700',    td: 'text-teal-600' },
+      { key: 'alpa',  label: 'Alpa',  th: 'text-rose-700',    td: 'text-rose-700 font-bold' }
+    ];
+
+    function getSekSelectedStatuses() {
+      const stEl = document.getElementById('sekRekapStatus');
+      const key = stEl ? stEl.value : 'alpa';
+      const col = SEK_STATUS_COLS.find(c => c.key === key) || SEK_STATUS_COLS[SEK_STATUS_COLS.length - 1];
+      return [col];
+    }
+
+    function onSekStatusChange() {
+      if (window._sekRekapData) renderSekretarisRekap(window._sekRekapData);
+    }
+
+    function loadSekretarisRekap() {
+      const m = document.getElementById('sekRekapMonth').value;
+      const y = document.getElementById('sekRekapYear').value;
+      showStatusBar('Memuat rekap presensi...', 50);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        window._sekRekapData = res;
+        renderSekretarisRekap(res);
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        alert('Gagal memuat rekap presensi: ' + (err && err.message ? err.message : err));
+      }).getWaliMonthlyReport(currentUser.kelas, currentUser.jurusan, `${y}-${m}`);
+    }
+
+    function renderSekretarisRekap(res) {
+      applyPjjVisibility(res && res.pjjAktif === true);
+      const tbody = document.getElementById('sekRekapTableBody');
+      const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const records = (res && res.records) || [];
+      const cols = getSekSelectedStatuses();
+      document.getElementById('sekRekapCount').textContent = records.length + ' siswa';
+      document.getElementById('sekRekapTableHead').innerHTML = '<tr><th class="p-4 w-16 text-center">No</th><th class="p-4">NISN</th><th class="p-4">Nama Siswa</th>' +
+        cols.map(c => `<th class="p-4 text-center ${c.th}">${c.label}</th>`).join('') + '</tr>';
+      if (!records.length) {
+        tbody.innerHTML = `<tr><td colspan="${3 + cols.length}" class="p-6 text-center text-slate-400 text-xs">Belum ada data siswa.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = records.map((r, i) => `
+        <tr class="hover:bg-slate-50">
+          <td class="p-4 text-center font-semibold text-slate-500">${i + 1}</td>
+          <td class="p-4">${esc(r.nisn)}</td>
+          <td class="p-4 font-bold">${esc(r.nama)}</td>
+          ${cols.map(c => `<td class="p-4 text-center font-semibold ${c.td}">${r[c.key] || 0}</td>`).join('')}
+        </tr>`).join('');
+    }
+
+    function loadWaliMatrixReport() {
+      const m = document.getElementById('matrixReportMonth').value;
+      const y = document.getElementById('matrixReportYear').value;
+      showStatusBar('Memuat rekap harian...', 50);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        appCache.matrixReportData = res;
+        renderWaliMatrixReport(res);
+      }).getWaliMatrixMonthlyReport(currentUser.kelas, currentUser.jurusan, y, m);
+    }
+
+    function renderWaliMatrixReport(res) {
+      applyPjjVisibility(res && res.pjjAktif === true);
+      const thead = document.getElementById('matrixTableHead');
+      const tbody = document.getElementById('matrixTableBody');
+      thead.innerHTML = '';
+      tbody.innerHTML = '';
+
+      let headerHtml = `<tr>
+        <th class="p-2 border text-center w-10">No</th>
+        <th class="p-2 border min-w-[110px] max-w-[150px]">Nama Siswa</th>`;
+      
+      for (let d = 1; d <= res.daysInMonth; d++) {
+        headerHtml += `<th class="p-1 border text-center date-col">${d}</th>`;
+      }
+      
+      headerHtml += `
+        <th class="p-2 border text-center text-emerald-700 bg-emerald-50 w-12 min-w-[48px]">H</th>
+        <th class="p-2 border text-center text-purple-700 bg-purple-50 w-8">P</th>
+        <th class="p-2 border text-center text-blue-700 bg-blue-50 w-8">I</th>
+        <th class="p-2 border text-center text-secondary-700 bg-secondary-50 w-8">S</th>
+        <th class="p-2 border text-center text-teal-700 bg-teal-50 w-8 pjj-el">J</th>
+        <th class="p-2 border text-center text-rose-700 bg-rose-50 font-bold w-8">A</th>
+      </tr>`;
+      thead.innerHTML = headerHtml;
+
+      if (!res.records || res.records.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="${res.daysInMonth + (window.pjjAktif === true ? 8 : 7)}" class="p-4 text-center text-slate-400">Belum ada data siswa.</td></tr>`;
+        return;
+      }
+
+      res.records.forEach((s, index) => {
+        let rowHtml = `<tr class="clickable-row hover:bg-slate-50" onclick="highlightRow(this)">
+          <td class="p-2 border text-center font-semibold text-slate-500">${index + 1}</td>
+          <td class="p-2 border font-bold text-xs leading-tight">${escH_(s.nama)}</td>`;
+
+        for (let d = 1; d <= res.daysInMonth; d++) {
+          const dayStr = d < 10 ? '0' + d : '' + d;
+          const monthStr = res.month < 10 ? '0' + res.month : '' + res.month;
+          const dateKey = `${res.year}-${monthStr}-${dayStr}`;
+          const val = s.daily[dateKey] || '';
+
+          let badgeColor = '';
+          if (val === 'H') badgeColor = 'text-emerald-600 font-bold';
+          else if (val === 'P') badgeColor = 'text-purple-600 font-bold';
+          else if (val === 'I') badgeColor = 'text-blue-600 font-bold';
+          else if (val === 'S') badgeColor = 'text-secondary-600 font-bold';
+          else if (val === 'J') badgeColor = 'text-teal-600 font-bold';
+          else if (val === 'A') badgeColor = 'text-rose-600 font-bold';
+
+          rowHtml += `<td class="p-1 border text-center date-col"><span class="${badgeColor}">${val}</span></td>`;
+        }
+
+        rowHtml += `
+          <td class="p-2 border text-center text-emerald-700 font-bold bg-emerald-50/50 min-w-[48px]">${s.hadir}</td>
+          <td class="p-2 border text-center text-purple-700 font-bold bg-purple-50/50">${s.pkl}</td>
+          <td class="p-2 border text-center text-blue-700 font-bold bg-blue-50/50">${s.izin}</td>
+          <td class="p-2 border text-center text-secondary-700 font-bold bg-secondary-50/50">${s.sakit}</td>
+          <td class="p-2 border text-center text-teal-700 font-bold bg-teal-50/50 pjj-el">${s.pjj}</td>
+          <td class="p-2 border text-center text-rose-700 font-bold bg-rose-50/50">${s.alpa}</td>
+        </tr>`;
+        tbody.innerHTML += rowHtml;
+      });
+    }
+
+    function renderStudentRows(students) {
+      const tbody = document.getElementById('studentTableBody');
+      tbody.innerHTML = '';
+      const selectAllCb = document.getElementById('selectAllStudentsCheckbox');
+      if (selectAllCb) selectAllCb.checked = false;
+      toggleBatchDeleteButtonState();
+      updateClassActionButtons();
+
+      if (!students || students.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">Belum ada data siswa.</td></tr>`;
+        return;
+      }
+      students.forEach((s, index) => {
+        tbody.innerHTML += `
+          <tr class="clickable-row hover:bg-slate-50" onclick="handleStudentRowClick(event, this)">
+            <td class="p-4 text-center" onclick="event.stopPropagation()">
+              <input type="checkbox" class="student-row-checkbox rounded border-slate-300 text-primary-600 focus:ring-primary-500 w-4 h-4 cursor-pointer" value="${s.id}" onchange="toggleBatchDeleteButtonState()">
+            </td>
+            <td class="p-4 text-center font-semibold text-slate-500">${index + 1}</td>
+            <td class="p-4">${s.nisn}</td>
+            <td class="p-4 font-bold">${escH_(s.nama)} (${escH_(s.kelas)}-${escH_(s.jurusan)})</td>
+            <td class="p-4 text-xs font-mono">${escH_(s.username || s.nisn)} / ${escH_(s.password || '123')}</td>
+            <td class="p-4 text-center space-x-2" onclick="event.stopPropagation()">
+              <button data-s="${escH_(JSON.stringify(s))}" onclick="openEditStudentModal(JSON.parse(this.dataset.s))" class="text-primary-600 text-xs font-bold hover:underline"><i class="fas fa-edit"></i> Edit</button>
+              <button onclick="deleteStudent('${s.id}')" class="text-rose-600 text-xs font-bold hover:underline"><i class="fas fa-trash"></i> Hapus</button>
+            </td>
+          </tr>
+        `;
+      });
+    }
+
+    function handleStudentRowClick(e, rowEl) {
+      highlightRow(rowEl);
+      const cb = rowEl.querySelector('.student-row-checkbox');
+      if (cb) { cb.checked = !cb.checked; toggleBatchDeleteButtonState(); }
+    }
+
+    function toggleSelectAllStudents(masterCb) {
+      const checkboxes = document.querySelectorAll('.student-row-checkbox');
+      checkboxes.forEach(cb => { cb.checked = masterCb.checked; });
+      toggleBatchDeleteButtonState();
+    }
+
+    function toggleBatchDeleteButtonState() {
+      const checkboxes = document.querySelectorAll('.student-row-checkbox:checked');
+      const btn = document.getElementById('btnBulkDeleteStudents');
+      const countBadge = document.getElementById('selectedCountBadge');
+      if (checkboxes.length > 0) {
+        btn.classList.remove('hidden');
+        btn.classList.add('inline-flex');
+        countBadge.innerText = checkboxes.length;
+      } else {
+        btn.classList.add('hidden');
+        btn.classList.remove('inline-flex');
+        countBadge.innerText = '0';
+      }
+    }
+
+    async function deleteSelectedStudentsBatch() {
+      const checkedBoxes = document.querySelectorAll('.student-row-checkbox:checked');
+      if (checkedBoxes.length === 0) return alert('Pilih minimal satu siswa!');
+      if (!(await askConfirm(`Hapus ${checkedBoxes.length} siswa terpilih beserta riwayatnya?`))) return;
+
+      const studentIds = Array.from(checkedBoxes).map(cb => cb.value);
+      showStatusBar(`Menghapus ${studentIds.length} siswa...`, 50);
+
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (res && res.success) {
+          alert(res.message);
+          appCache = { attendanceData: null, monthlyReportData: null, matrixReportData: null, studentsData: null };
+          loadWaliData();
+        } else { alert('Gagal: ' + (res ? res.message : 'Error')); }
+      }).deleteStudentsBatch(studentIds);
+    }
+
+    function downloadStudentTemplate() {
+      const HEADERS = ['NISN', 'Nama Lengkap', 'Username', 'Password'];
+      const MAX_ROWS = 1000; // jumlah baris isian yang sudah diformat teks
+
+      // Semua sel dibuat bertipe TEKS (format '@'): NISN berawalan 0, mis. 0012345678,
+      // tidak kehilangan nolnya saat diketik langsung maupun ditempel sebagai nilai.
+      const ws = {};
+      const put = (r, c, v) => { ws[XLSX.utils.encode_cell({ r: r, c: c })] = { t: 's', v: v, z: '@' }; };
+
+      HEADERS.forEach((h, c) => put(0, c, h));
+      ['0012345678', 'Contoh Siswa', 'contoh01', '123'].forEach((v, c) => put(1, c, v));
+      for (let r = 2; r <= MAX_ROWS; r++) {
+        for (let c = 0; c < HEADERS.length; c++) put(r, c, '');
+      }
+      ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: MAX_ROWS, c: HEADERS.length - 1 } });
+      ws['!cols'] = [{ wch: 18 }, { wch: 34 }, { wch: 18 }, { wch: 14 }];
+
+      const petunjuk = XLSX.utils.aoa_to_sheet([
+        ['PETUNJUK PENGISIAN TEMPLATE SISWA'],
+        [''],
+        ['1. Isi data di sheet "Template" mulai baris ke-2. Hapus baris contoh sebelum diimpor.'],
+        ['2. Semua kolom sudah berformat TEKS, jadi NISN berawalan 0 (mis. 0012345678) tetap utuh.'],
+        ['3. NISN dan Nama Lengkap wajib diisi. Username kosong = otomatis memakai NISN. Password kosong = 123.'],
+        ['4. Satu NISN hanya boleh untuk satu siswa. Baris dengan NISN yang sudah terdaftar akan dilewati saat impor.'],
+        ['5. Kelas dan Jurusan otomatis mengikuti kelas guru yang sedang login.'],
+        ['6. Jika menempel data dari file lain, pakai Tempel Nilai (Paste Special > Values) agar format teks tidak tertimpa.']
+      ]);
+      petunjuk['!cols'] = [{ wch: 110 }];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, ws, "Template");
+      XLSX.utils.book_append_sheet(workbook, petunjuk, "Petunjuk");
+      XLSX.writeFile(workbook, `Template_Siswa.xlsx`);
+    }
+
+    function exportStudentsExcel() {
+      if (!currentStudentsList || currentStudentsList.length === 0) return alert('Tidak ada data!');
+      showStatusBar('Exporting...', 60);
+      const exportData = currentStudentsList.map(s => ({
+        "NISN": s.nisn, "Nama Lengkap": s.nama, "Kelas": s.kelas, "Jurusan": s.jurusan,
+        "Username": s.username || s.nisn, "Password": s.password || '123'
+      }));
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Data Siswa");
+      XLSX.writeFile(workbook, `Data_Siswa.xlsx`);
+      hideStatusBar();
+    }
+
+    function handleExcelImport(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      showStatusBar('Membaca file...', 20);
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          // raw:false = baca sesuai teks yang tampil di Excel, sehingga NISN berawalan 0 (mis. 0012345) tidak kehilangan nolnya
+          const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { raw: false });
+          if (rows.length === 0) { hideStatusBar(); return alert('File kosong!'); }
+
+          const defKelas = (currentUser.kelas && currentUser.kelas !== '-') ? currentUser.kelas : 'X';
+          const defJurusan = (currentUser.jurusan && currentUser.jurusan !== '-') ? currentUser.jurusan : 'TJKT';
+          const payload = rows.map(row => ({
+            nisn: row.NISN ? String(row.NISN).trim() : '',
+            nama: row["Nama Lengkap"] ? String(row["Nama Lengkap"]).trim() : '',
+            username: row.Username || '', password: row.Password || '',
+            kelas: row.Kelas || defKelas, jurusan: row.Jurusan || defJurusan
+          })).filter(p => p.nisn || p.nama); // baris kosong (mis. sisa baris template) diabaikan diam-diam
+          if (payload.length === 0) { hideStatusBar(); return alert('File kosong! Isi NISN dan Nama Lengkap mulai baris ke-2.'); }
+
+          showStatusBar('Mengimpor & memeriksa NISN ganda...', 60);
+          gsr().withSuccessHandler(res => {
+            hideStatusBar();
+            if (!res || !res.success) { alert('Gagal: ' + (res ? res.message : 'Error')); return; }
+            let msg = `Impor selesai: ${res.added} siswa ditambahkan.`;
+            if (res.skipped && res.skipped.length) {
+              msg += `\n\n${res.skipped.length} baris DILEWATI karena NISN sudah terdaftar:\n- ` + res.skipped.slice(0, 10).join('\n- ');
+              if (res.skipped.length > 10) msg += `\n... dan ${res.skipped.length - 10} lainnya`;
+            }
+            if (res.invalid) msg += `\n\n${res.invalid} baris dilewati karena NISN/Nama kosong.`;
+            alert(msg);
+            appCache = { attendanceData: null, monthlyReportData: null, matrixReportData: null, studentsData: null };
+            loadWaliData();
+          }).withFailureHandler(err => {
+            hideStatusBar();
+            alert('Gagal impor: ' + (err && err.message ? err.message : err));
+          }).importStudentsBatch(payload);
+        } catch (err) {
+          hideStatusBar();
+          alert('Gagal: ' + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function openStudentModal() { 
+      document.getElementById('studentModalTitle').innerText = 'Tambah Siswa Baru';
+      document.getElementById('modalStudentId').value = '';
+      document.getElementById('modalStudentNisn').value = '';
+      document.getElementById('modalStudentNama').value = '';
+      document.getElementById('modalStudentUsername').value = '';
+      document.getElementById('modalStudentPassword').value = '';
+      document.getElementById('studentModal').classList.remove('hidden'); 
+    }
+
+    function openEditStudentModal(student) {
+      document.getElementById('studentModalTitle').innerText = 'Edit Data Siswa';
+      document.getElementById('modalStudentId').value = student.id;
+      document.getElementById('modalStudentNisn').value = student.nisn;
+      document.getElementById('modalStudentNama').value = student.nama;
+      document.getElementById('modalStudentUsername').value = student.username || '';
+      document.getElementById('modalStudentPassword').value = student.password || '123';
+      document.getElementById('studentModal').classList.remove('hidden');
+    }
+
+    function closeStudentModal() { document.getElementById('studentModal').classList.add('hidden'); }
+
+    function saveStudentSubmit(e) {
+      e.preventDefault();
+      showStatusBar('Menyimpan...', 50);
+      const st = { 
+        id: document.getElementById('modalStudentId').value, 
+        nisn: document.getElementById('modalStudentNisn').value, 
+        nama: document.getElementById('modalStudentNama').value, 
+        username: document.getElementById('modalStudentUsername').value, 
+        password: document.getElementById('modalStudentPassword').value, 
+        kelas: currentUser.kelas || 'X', 
+        jurusan: currentUser.jurusan || 'TJKT' 
+      };
+      gsr().withSuccessHandler(res => { 
+        hideStatusBar(); 
+        if (res && res.success === false) { alert(res.message || 'Gagal menyimpan siswa.'); return; }
+        closeStudentModal(); 
+        appCache = { attendanceData: null, monthlyReportData: null, matrixReportData: null, studentsData: null };
+        loadWaliData(); 
+        let info = '';
+        if (res && res.synced > 0) info += `Perubahan nama/NISN juga diterapkan ke ${res.synced} baris riwayat presensi.`;
+        if (res && res.warning) info += (info ? '\n\n' : '') + res.warning;
+        if (info) alert('Data siswa tersimpan.\n\n' + info);
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      }).saveStudent(st);
+    }
+    
+    async function deleteStudent(id) { 
+      if((await askConfirm('Hapus siswa ini?'))) {
+        showStatusBar('Menghapus...', 50);
+        gsr().withSuccessHandler(() => { 
+          hideStatusBar(); 
+          appCache = { attendanceData: null, monthlyReportData: null, matrixReportData: null, studentsData: null };
+          loadWaliData(); 
+        }).deleteStudent(id);
+      }
+    }
+
+    // ===== PINDAH KELAS / NAIK KELAS / TAMAT =====
+    function updateClassActionButtons() {
+      const k = (currentUser && currentUser.kelas) ? String(currentUser.kelas).trim().toUpperCase() : '';
+      const setShow = (id, show) => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', !show); };
+      setShow('btnNaikKelas', k === 'X' || k === 'XI');
+      setShow('btnTamatKelas', k === 'XII');
+      const lbl = document.getElementById('naikKelasLabel');
+      if (lbl) lbl.innerText = k === 'X' ? 'Naik Kelas (X → XI)' : (k === 'XI' ? 'Naik Kelas (XI → XII)' : 'Naik Kelas');
+    }
+
+    // Siswa yang diproses WAJIB dicentang dulu (kotak centang di header tabel = pilih semua).
+    function getClassActionTargets() {
+      const checked = Array.from(document.querySelectorAll('.student-row-checkbox:checked')).map(cb => cb.value);
+      if (checked.length === 0) {
+        alert('Centang dulu siswa yang ingin diproses.\n\nTips: gunakan kotak centang di header tabel untuk memilih semua siswa sekaligus.');
+        return { ids: [], scope: '' };
+      }
+      return { ids: checked, scope: `${checked.length} siswa terpilih` };
+    }
+
+    function finishClassAction(res) {
+      hideStatusBar();
+      if (!res || res.success === false) {
+        alert('Gagal: ' + (res && res.message ? res.message : 'Terjadi kesalahan.'));
+        return;
+      }
+      let msg = res.message || 'Selesai.';
+      if (res.skipped && res.skipped.length) {
+        msg += `\n\n${res.skipped.length} siswa dilewati:\n- ` + res.skipped.slice(0, 10).join('\n- ');
+        if (res.skipped.length > 10) msg += `\n... dan ${res.skipped.length - 10} lainnya`;
+      }
+      if (res.warning) msg += '\n\n' + res.warning;
+      alert(msg);
+      appCache = { attendanceData: null, monthlyReportData: null, matrixReportData: null, studentsData: null };
+      loadWaliData();
+    }
+
+    function failClassAction(err) {
+      hideStatusBar();
+      alert('Gagal memproses: ' + (err && err.message ? err.message : err));
+    }
+
+    function openPindahKelasModal() {
+      const t = getClassActionTargets();
+      if (t.ids.length === 0) return;
+      const sel = document.getElementById('pindahJurusanSelect');
+      Array.from(sel.options).forEach(o => { const same = (o.value === currentUser.jurusan); o.disabled = same; o.hidden = same; });
+      const first = Array.from(sel.options).find(o => !o.disabled);
+      sel.value = first ? first.value : '';
+      document.getElementById('pindahKelasInfo').innerText =
+        `${t.scope} akan dipindahkan dari ${currentUser.kelas}-${currentUser.jurusan} ke kelas ${currentUser.kelas} dengan jurusan yang Anda pilih di bawah. Kelas tetap sama.`;
+      document.getElementById('pindahKelasModal').classList.remove('hidden');
+    }
+
+    function closePindahKelasModal() { document.getElementById('pindahKelasModal').classList.add('hidden'); }
+
+    async function submitPindahKelas() {
+      const jur = document.getElementById('pindahJurusanSelect').value;
+      if (!jur) return alert('Pilih jurusan tujuan!');
+      const t = getClassActionTargets();
+      if (t.ids.length === 0) return;
+      if (!(await askConfirm(`PINDAH KELAS\n\n${t.scope} akan dipindahkan ke ${currentUser.kelas}-${jur}.\nRiwayat presensi siswa ikut berpindah.\n\nLanjutkan?`))) return;
+      closePindahKelasModal();
+      showStatusBar('Memindahkan siswa...', 50);
+      gsr().withSuccessHandler(finishClassAction).withFailureHandler(failClassAction).pindahJurusanSiswaBatch(t.ids, jur);
+    }
+
+    async function naikKelasSubmit() {
+      const k = String(currentUser.kelas || '').trim().toUpperCase();
+      const target = k === 'X' ? 'XI' : (k === 'XI' ? 'XII' : '');
+      if (!target) return alert('Naik kelas hanya untuk kelas X dan XI.');
+      const t = getClassActionTargets();
+      if (t.ids.length === 0) return;
+      if (!(await askConfirm(`NAIK KELAS\n\n${t.scope} akan naik dari kelas ${k} ke kelas ${target} (jurusan tetap ${currentUser.jurusan}).\nRiwayat presensi siswa ikut berpindah ke kelas ${target}.\n\nLanjutkan?`))) return;
+      showStatusBar('Menaikkan kelas...', 50);
+      gsr().withSuccessHandler(finishClassAction).withFailureHandler(failClassAction).naikKelasSiswaBatch(t.ids);
+    }
+
+    async function tamatSubmit() {
+      const k = String(currentUser.kelas || '').trim().toUpperCase();
+      if (k !== 'XII') return alert('Fitur Tamat hanya untuk kelas XII.');
+      const t = getClassActionTargets();
+      if (t.ids.length === 0) return;
+      const ketik = (await askPrompt(`⚠ TAMAT / LULUS\n\n${t.scope} akan DIHAPUS PERMANEN dari database:\n- data siswa (sheet Students)\n- seluruh riwayat presensi (sheet Attendance)\n- bukti foto (sheet BuktiFoto)\n- file foto selfie di Google Drive\n\nTindakan ini TIDAK DAPAT DIBATALKAN. Unduh/Export Excel dulu bila data masih dibutuhkan.\n\nKetik TAMAT (huruf besar) untuk melanjutkan:`));
+      if (ketik === null) return;
+      if (ketik.trim() !== 'TAMAT') return alert('Dibatalkan: kata konfirmasi tidak sesuai.');
+      showStatusBar('Memproses kelulusan & menghapus data (foto Drive bisa memakan waktu)...', 50);
+      gsr().withSuccessHandler(finishClassAction).withFailureHandler(failClassAction).tamatkanSiswaBatch(t.ids);
+    }
+
+    function loadKepsekDefaultSummary() {
+      const filters = { 
+        month: document.getElementById('filterKepsekMonth').value, 
+        year: document.getElementById('filterKepsekYear').value, 
+        grade: 'ALL', 
+        major: 'ALL' 
+      };
+
+      showStatusBar('Memuat ringkasan statistik sekolah...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        applyPjjVisibility(res && res.pjjAktif === true);
+        document.getElementById('statPersentaseHadir').innerText = res.stats.persentaseHadir + '%';
+        document.getElementById('statPersentasePkl').innerText = res.stats.persentasePkl + '%';
+        document.getElementById('statPersentaseIzin').innerText = res.stats.persentaseIzin + '%';
+        document.getElementById('statPersentaseSakit').innerText = res.stats.persentaseSakit + '%';
+        document.getElementById('statPersentasePjj').innerText = res.stats.persentasePjj + '%';
+        document.getElementById('statPersentaseAlpa').innerText = res.stats.persentaseAlpa + '%';
+        document.getElementById('statTotalSiswa').innerText = res.stats.totalSiswa;
+
+        renderKepsekCharts(res.stats);
+      }).getKepsekReports(filters);
+    }
+
+    function loadKepsekData() {
+      const filters = { 
+        month: document.getElementById('filterKepsekMonth').value, 
+        year: document.getElementById('filterKepsekYear').value, 
+        grade: document.getElementById('filterKepsekGrade').value, 
+        major: document.getElementById('filterKepsekMajor').value 
+      };
+
+      showStatusBar('Memuat matriks rekap sekolah...', 50);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        applyPjjVisibility(res && res.pjjAktif === true);
+        document.getElementById('statPersentaseHadir').innerText = res.stats.persentaseHadir + '%';
+        document.getElementById('statPersentasePkl').innerText = res.stats.persentasePkl + '%';
+        document.getElementById('statPersentaseIzin').innerText = res.stats.persentaseIzin + '%';
+        document.getElementById('statPersentaseSakit').innerText = res.stats.persentaseSakit + '%';
+        document.getElementById('statPersentasePjj').innerText = res.stats.persentasePjj + '%';
+        document.getElementById('statPersentaseAlpa').innerText = res.stats.persentaseAlpa + '%';
+        document.getElementById('statTotalSiswa').innerText = res.stats.totalSiswa;
+
+        renderKepsekCharts(res.stats);
+
+        document.getElementById('kepsekMatrixInitialState').classList.add('hidden');
+        document.getElementById('kepsekMatrixContentWrapper').classList.remove('hidden');
+
+        // Nama wali kelas di atas tabel
+        const waliBox = document.getElementById('kepsekWaliInfo');
+        const waliNama = (res.waliKelas || '').toString().trim();
+        window._kepsekWaliNama = waliNama;
+        document.getElementById('kepsekWaliKelasLabel').textContent = (filters.grade === 'ALL' ? '' : filters.grade) + (filters.major === 'ALL' ? '' : '-' + filters.major);
+        document.getElementById('kepsekWaliNama').textContent = waliNama || 'Belum ada data wali kelas';
+        waliBox.classList.remove('hidden');
+
+        const thead = document.getElementById('kepsekTableHead');
+        const tbody = document.getElementById('kepsekRecordsTableBody');
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+
+        let headerHtml = `<tr>
+          <th class="p-2 border text-center w-10">No</th>
+          <th class="p-2 border min-w-[140px] max-w-[180px]">Nama Siswa</th>
+          <th class="p-2 border text-center w-20">Kelas</th>`;
+        
+        for (let d = 1; d <= res.daysInMonth; d++) {
+          headerHtml += `<th class="p-1 border text-center date-col">${d}</th>`;
+        }
+        
+        headerHtml += `
+          <th class="p-2 border text-center text-emerald-700 bg-emerald-50 w-8">H</th>
+          <th class="p-2 border text-center text-purple-700 bg-purple-50 w-8">P</th>
+          <th class="p-2 border text-center text-blue-700 bg-blue-50 w-8">I</th>
+          <th class="p-2 border text-center text-secondary-700 bg-secondary-50 w-8">S</th>
+          <th class="p-2 border text-center text-teal-700 bg-teal-50 w-8 pjj-el">J</th>
+          <th class="p-2 border text-center text-rose-700 bg-rose-50 font-bold w-8">A</th>
+        </tr>`;
+        thead.innerHTML = headerHtml;
+
+        if (!res.records || res.records.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="${res.daysInMonth + (window.pjjAktif === true ? 9 : 8)}" class="p-4 text-center text-slate-400">Tidak ada data siswa yang sesuai filter.</td></tr>`;
+          return;
+        }
+
+        res.records.forEach((s, index) => {
+          let rowHtml = `<tr class="clickable-row hover:bg-slate-50" onclick="highlightRow(this)">
+            <td class="p-2 border text-center font-semibold text-slate-500">${index + 1}</td>
+            <td class="p-2 border font-bold text-xs leading-tight">${escH_(s.nama)}</td>
+            <td class="p-2 border text-center text-xs font-semibold">${s.kelas}-${s.jurusan}</td>`;
+
+          for (let d = 1; d <= res.daysInMonth; d++) {
+            const dayStr = d < 10 ? '0' + d : '' + d;
+            const monthStr = res.month < 10 ? '0' + res.month : '' + res.month;
+            const dateKey = `${res.year}-${monthStr}-${dayStr}`;
+            const val = s.daily[dateKey] || '';
+
+            let badgeColor = '';
+            if (val === 'H') badgeColor = 'text-emerald-600 font-bold';
+            else if (val === 'P') badgeColor = 'text-purple-600 font-bold';
+            else if (val === 'I') badgeColor = 'text-blue-600 font-bold';
+            else if (val === 'S') badgeColor = 'text-secondary-600 font-bold';
+            else if (val === 'J') badgeColor = 'text-teal-600 font-bold';
+            else if (val === 'A') badgeColor = 'text-rose-600 font-bold';
+
+            rowHtml += `<td class="p-1 border text-center date-col"><span class="${badgeColor}">${val}</span></td>`;
+          }
+
+          rowHtml += `
+            <td class="p-2 border text-center text-emerald-700 font-bold bg-emerald-50/50">${s.hadir}</td>
+            <td class="p-2 border text-center text-purple-700 font-bold bg-purple-50/50">${s.pkl}</td>
+            <td class="p-2 border text-center text-blue-700 font-bold bg-blue-50/50">${s.izin}</td>
+            <td class="p-2 border text-center text-secondary-700 font-bold bg-secondary-50/50">${s.sakit}</td>
+            <td class="p-2 border text-center text-teal-700 font-bold bg-teal-50/50 pjj-el">${s.pjj}</td>
+            <td class="p-2 border text-center text-rose-700 font-bold bg-rose-50/50">${s.alpa}</td>
+          </tr>`;
+          tbody.innerHTML += rowHtml;
+        });
+      }).getKepsekReports(filters);
+    }
+
+    function highlightRow(rowEl) {
+      rowEl.parentElement.querySelectorAll('tr').forEach(tr => tr.classList.remove('selected-row'));
+      rowEl.classList.toggle('selected-row');
+    }
+
+    function renderKepsekCharts(stats) {
+      const pjjOn = window.pjjAktif === true;
+      const chLabels = pjjOn ? ['Hadir', 'PKL', 'Izin', 'Sakit', 'PJJ', 'Alpa'] : ['Hadir', 'PKL', 'Izin', 'Sakit', 'Alpa'];
+      const chData = pjjOn ? [stats.hadir, stats.pkl, stats.izin, stats.sakit, stats.pjj, stats.alpa] : [stats.hadir, stats.pkl, stats.izin, stats.sakit, stats.alpa];
+      const chColors = pjjOn ? ['#10b981', '#8b5cf6', '#3b82f6', '#f59e0b', '#14b8a6', '#f43f5e'] : ['#10b981', '#8b5cf6', '#3b82f6', '#f59e0b', '#f43f5e'];
+      const barCtx = document.getElementById('kepsekBarChart').getContext('2d');
+      if (kepsekBarChartInstance) kepsekBarChartInstance.destroy();
+      kepsekBarChartInstance = new Chart(barCtx, {
+        type: 'bar',
+        data: {
+          labels: chLabels,
+          datasets: [{ data: chData, backgroundColor: chColors, borderRadius: 6 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      });
+
+      const pieCtx = document.getElementById('kepsekPieChart').getContext('2d');
+      if (kepsekPieChartInstance) kepsekPieChartInstance.destroy();
+      kepsekPieChartInstance = new Chart(pieCtx, {
+        type: 'doughnut',
+        data: {
+          labels: chLabels,
+          datasets: [{ data: chData, backgroundColor: chColors }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } }
+      });
+    }
+
+    /* ================= DOWNLOAD PDF (ukuran Folio, otomatis lanjut halaman) ================= */
+    const FOLIO_FORMAT = [215.9, 330.2]; // mm — ukuran kertas Folio/F4
+
+    function isMobileDevice() {
+      return /Android|iPhone|iPad|iPod|Mobile|webOS/i.test(navigator.userAgent) || window.innerWidth <= 820;
+    }
+
+    function saveFolioPdfFile(doc, filename) {
+      // Di sebagian besar HP (terutama iOS Safari, dan beberapa WebView Android),
+      // doc.save() otomatis tidak memicu unduhan seperti di laptop.
+      // Solusinya: buka PDF di tab baru — dari situ HP akan menampilkan tombol
+      // Unduh/Bagikan bawaan browser untuk menyimpan filenya.
+      if (isMobileDevice()) {
+        const blobUrl = doc.output('bloburl');
+        const win = window.open(blobUrl, '_blank');
+        if (!win) {
+          // Jika tab baru diblokir (pop-up blocker), coba cara unduh langsung sebagai cadangan
+          doc.save(filename);
+        }
+      } else {
+        doc.save(filename);
+      }
+    }
+
+    function exportFolioPdf(tableId, opts) {
+      opts = opts || {};
+      if (!window.jspdf || !window.jspdf.jsPDF) {
+        alert('Pustaka pembuat PDF belum termuat (koneksi internet mungkin lambat). Silakan tunggu sebentar lalu coba lagi.');
+        return;
+      }
+      const table = document.getElementById(tableId);
+      const tbody = table ? table.querySelector('tbody') : null;
+      if (!table || !tbody || tbody.children.length === 0) {
+        alert('Tidak ada data untuk diunduh. Silakan tampilkan datanya terlebih dahulu.');
+        return;
+      }
+
+      try {
+        const { jsPDF } = window.jspdf;
+        const orientation = opts.orientation === 'landscape' ? 'landscape' : 'portrait';
+        const doc = new jsPDF({ orientation: orientation, unit: 'mm', format: FOLIO_FORMAT });
+        const marginLR = 10;
+        let cursorY = 14;
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text(opts.title || 'Laporan Presensi', marginLR, cursorY);
+        cursorY += 5;
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(90);
+        doc.text('SMK Swasta Nusantara Lubuk Pakam' + (opts.subtitle ? ' — ' + opts.subtitle : ''), marginLR, cursorY);
+        doc.setTextColor(0);
+        cursorY += 4;
+
+        doc.autoTable({
+          html: '#' + tableId,
+          startY: cursorY,
+          margin: { left: marginLR, right: marginLR, top: 12, bottom: 12 },
+          theme: 'grid',
+          styles: { fontSize: opts.fontSize || 8, cellPadding: 1.6, overflow: 'linebreak', valign: 'middle', lineColor: [220, 226, 238], lineWidth: 0.1 },
+          headStyles: { fillColor: [30, 58, 111], textColor: 255, fontStyle: 'bold', halign: 'center', fontSize: (opts.fontSize || 8) },
+          bodyStyles: { textColor: [30, 41, 59] },
+          alternateRowStyles: { fillColor: [245, 247, 251] },
+          horizontalPageBreak: !!opts.horizontalPageBreak,
+          horizontalPageBreakRepeat: opts.repeatCols || undefined
+        });
+
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          const w = doc.internal.pageSize.getWidth();
+          const h = doc.internal.pageSize.getHeight();
+          doc.setFontSize(7.5);
+          doc.setTextColor(130);
+          doc.text('Dicetak: ' + new Date().toLocaleDateString('id-ID'), marginLR, h - 6);
+          doc.text('Halaman ' + i + ' dari ' + pageCount, w - marginLR, h - 6, { align: 'right' });
+        }
+
+        saveFolioPdfFile(doc, opts.filename || 'laporan-presensi.pdf');
+      } catch (err) {
+        console.error('Gagal membuat PDF:', err);
+        alert('Gagal membuat PDF di perangkat ini.\nDetail: ' + (err && err.message ? err.message : err));
+      }
+    }
+
+    function downloadWaliReportPDF() {
+      const bulanSel = document.getElementById('waliReportMonth');
+      const tahunSel = document.getElementById('waliReportYear');
+      const bulanTxt = bulanSel && bulanSel.selectedIndex >= 0 ? bulanSel.options[bulanSel.selectedIndex].text : '';
+      const tahunTxt = tahunSel ? tahunSel.value : '';
+      const infoTxt = (document.getElementById('waliInfoTag') || {}).textContent || '';
+      exportFolioPdf('waliReportTable', {
+        orientation: 'portrait',
+        title: 'Rekap Bulanan Kehadiran Siswa',
+        subtitle: (infoTxt.trim() ? infoTxt.trim() + ' — ' : '') + 'Periode ' + bulanTxt + ' ' + tahunTxt,
+        fontSize: 8.5,
+        filename: 'Rekap-Bulanan-' + (tahunTxt || '') + (bulanSel ? '-' + bulanSel.value : '') + '.pdf'
+      });
+    }
+
+    function downloadWaliMatrixPDF() {
+      const bulanSel = document.getElementById('matrixReportMonth');
+      const tahunSel = document.getElementById('matrixReportYear');
+      const bulanTxt = bulanSel && bulanSel.selectedIndex >= 0 ? bulanSel.options[bulanSel.selectedIndex].text : '';
+      const tahunTxt = tahunSel ? tahunSel.value : '';
+      const infoTxt = (document.getElementById('waliInfoTag') || {}).textContent || '';
+      exportFolioPdf('waliMatrixTable', {
+        orientation: 'landscape',
+        title: 'Rekap Harian (Matriks) Kehadiran Siswa',
+        subtitle: (infoTxt.trim() ? infoTxt.trim() + ' — ' : '') + 'Periode ' + bulanTxt + ' ' + tahunTxt,
+        fontSize: 6.5,
+        horizontalPageBreak: true,
+        repeatCols: [0, 1],
+        filename: 'Rekap-Harian-' + (tahunTxt || '') + (bulanSel ? '-' + bulanSel.value : '') + '.pdf'
+      });
+    }
+
+    function downloadKepsekReportPDF() {
+      const bulanSel = document.getElementById('filterKepsekMonth');
+      const tahunSel = document.getElementById('filterKepsekYear');
+      const gradeSel = document.getElementById('filterKepsekGrade');
+      const majorSel = document.getElementById('filterKepsekMajor');
+      const bulanTxt = bulanSel && bulanSel.selectedIndex >= 0 ? bulanSel.options[bulanSel.selectedIndex].text : '';
+      const tahunTxt = tahunSel ? tahunSel.value : '';
+      exportFolioPdf('kepsekMatrixTable', {
+        orientation: 'landscape',
+        title: 'Matriks Rekap Presensi Sekolah',
+        subtitle: 'Periode ' + bulanTxt + ' ' + tahunTxt + ' — Kelas ' + (gradeSel ? gradeSel.value : 'Semua') + ' — Jurusan ' + (majorSel ? majorSel.value : 'Semua') + (window._kepsekWaliNama ? ' — Wali Kelas: ' + window._kepsekWaliNama : ''),
+        fontSize: 6.5,
+        horizontalPageBreak: true,
+        repeatCols: [0, 1, 2],
+        filename: 'Rekap-Sekolah-' + (tahunTxt || '') + (bulanSel ? '-' + bulanSel.value : '') + '.pdf'
+      });
+    }
+
+    /* ================= DOWNLOAD PDF TAB KETERANGAN (A4 Landscape) ================= */
+    function downloadKeteranganPDF(p) {
+      const last = (window._ketLast || {})[p];
+      if (!last || !last.logs || !last.logs.length) {
+        alert('Tidak ada data untuk diunduh. Silakan tampilkan datanya terlebih dahulu.');
+        return;
+      }
+      if (!window.jspdf || !window.jspdf.jsPDF) {
+        alert('Pustaka pembuat PDF belum termuat (koneksi internet mungkin lambat). Silakan tunggu sebentar lalu coba lagi.');
+        return;
+      }
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });   // 297 x 210 mm
+        const logs = last.logs, meta = last.meta || {};
+        const showLok = !!logs[0].lokasiAktif;
+        const marginLR = 10;
+        const pjjOn = window.pjjAktif === true;
+        const isKepsek = currentUser && (currentUser.role === 'Kepala Sekolah' || currentUser.role === 'Wakil Kepala Sekolah');
+        const tglPendek = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : String(s || ''); };
+        const mapUrl = v => {
+          const m = /^(-?\d{1,3}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)$/.exec(String(v || '').trim());
+          return m ? 'https://www.google.com/maps?q=' + m[1] + ',' + m[2] : '';
+        };
+
+        // Judul & informasi filter
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+        doc.text('Keterangan Siswa (PKL, Izin, Sakit' + (pjjOn ? ', PJJ' : '') + ')', marginLR, 14);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(90);
+        doc.text('SMK Swasta Nusantara Lubuk Pakam', marginLR, 19.5);
+        doc.text((meta.kelasInfo ? meta.kelasInfo + '  |  ' : '') + (meta.periode ? 'Periode: ' + meta.periode : ''), marginLR, 24.5);
+        const cnt = {}; logs.forEach(r => { cnt[r.status] = (cnt[r.status] || 0) + 1; });
+        const ringkas = 'Total ' + logs.length + ' data' + Object.keys(cnt).map(k => '  |  ' + k + ': ' + cnt[k]).join('');
+        doc.text(ringkas, marginLR, 29.5);
+        let startY = 33;
+        if (isKepsek) {
+          doc.setFontSize(8); doc.setTextColor(120);
+          doc.text('Catatan: hanya menampilkan data yang telah diverifikasi Wali Kelas.', marginLR, 34);
+          startY = 37;
+        }
+        doc.setTextColor(0);
+
+        // Tabel
+        const head = ['No', 'Tanggal', 'NISN', 'Nama Siswa', 'Kelas', 'Status', 'Keterangan', 'Bukti Foto'];
+        if (showLok) head.push('Lokasi');
+        const body = logs.map((r, i) => {
+          const row = [String(i + 1), tglPendek(r.tanggal), String(r.nisn || ''), r.nama || '', (r.kelas || '') + ' - ' + (r.jurusan || ''), r.status || '', r.alasan || '-',
+                       (r.fotoUrl && String(r.fotoUrl).indexOf('http') === 0) ? 'Lihat Foto' : '-'];
+          if (showLok) row.push(mapUrl(r.lokasi) ? 'Lihat Peta' : '-');
+          return row;
+        });
+        const colStyles = {
+          0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 23, halign: 'center' }, 2: { cellWidth: 26 }, 3: { cellWidth: 50 },
+          4: { cellWidth: 22, halign: 'center' }, 5: { cellWidth: 16, halign: 'center' }, 6: { cellWidth: 'auto' }, 7: { cellWidth: 22, halign: 'center' }
+        };
+        if (showLok) colStyles[8] = { cellWidth: 22, halign: 'center' };
+        const linkCol = (c, r) => (c === 7 ? (logs[r].fotoUrl && String(logs[r].fotoUrl).indexOf('http') === 0 ? logs[r].fotoUrl : '') : (showLok && c === 8 ? mapUrl(logs[r].lokasi) : ''));
+
+        doc.autoTable({
+          head: [head], body: body, startY: startY,
+          margin: { left: marginLR, right: marginLR, top: 12, bottom: 14 },
+          theme: 'grid',
+          styles: { fontSize: 8.5, cellPadding: 1.8, overflow: 'linebreak', valign: 'middle', lineColor: [220, 226, 238], lineWidth: 0.1 },
+          headStyles: { fillColor: [30, 58, 111], textColor: 255, fontStyle: 'bold', halign: 'center' },
+          bodyStyles: { textColor: [30, 41, 59] },
+          alternateRowStyles: { fillColor: [245, 247, 251] },
+          columnStyles: colStyles,
+          didParseCell: d => {
+            if (d.section !== 'body') return;
+            if (linkCol(d.column.index, d.row.index)) { d.cell.styles.textColor = [29, 78, 216]; d.cell.styles.fontStyle = 'bold'; }
+            else if (d.column.index === 7 || (showLok && d.column.index === 8)) d.cell.styles.textColor = [148, 163, 184];
+          },
+          didDrawCell: d => {
+            if (d.section !== 'body') return;
+            const url = linkCol(d.column.index, d.row.index);
+            if (url) doc.link(d.cell.x, d.cell.y, d.cell.width, d.cell.height, { url: url });   // tautan bisa diklik di PDF
+          }
+        });
+
+        // Footer tiap halaman
+        const pageCount = doc.internal.getNumberOfPages();
+        const now = new Date();
+        const cetak = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) + ' ' + now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        const oleh = currentUser ? (currentUser.nama || currentUser.username || '') + (currentUser.role ? ' (' + currentUser.role + ')' : '') : '';
+        for (let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          const w = doc.internal.pageSize.getWidth(), h = doc.internal.pageSize.getHeight();
+          doc.setFontSize(7.5); doc.setTextColor(130);
+          doc.text('Dicetak: ' + cetak + (oleh ? ' oleh ' + oleh : ''), marginLR, h - 6);
+          doc.text('Halaman ' + i + ' dari ' + pageCount, w - marginLR, h - 6, { align: 'right' });
+        }
+
+        saveFolioPdfFile(doc, 'Keterangan-Siswa-' + (meta.fileTag || 'laporan') + '.pdf');
+      } catch (err) {
+        console.error('Gagal membuat PDF:', err);
+        alert('Gagal membuat PDF di perangkat ini.\nDetail: ' + (err && err.message ? err.message : err));
+      }
+    }
+  </script>
+</body>
+</html>
