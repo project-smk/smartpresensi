@@ -770,11 +770,14 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         <button id="adminTabUserBtn" onclick="switchAdminTab('users')" class="tab-btn tab-btn-active">
           <i class="fas fa-users-cog mr-1.5"></i>Kelola Akun
         </button>
+        <button id="adminTabGpsBtn" onclick="switchAdminTab('gps')" class="tab-btn">
+          <i class="fas fa-map-marked-alt mr-1.5"></i>Atur GPS & Radius
+        </button>
+        <button id="adminTabBrowserBtn" onclick="switchAdminTab('browser')" class="tab-btn">
+          <i class="fab fa-chrome mr-1.5"></i>Atur Browser & Folder
+        </button>
         <button id="adminTabVerifikasiBtn" onclick="switchAdminTab('verifikasi')" class="tab-btn">
           <i class="fas fa-check-double mr-1.5"></i>Verifikasi
-        </button>
-        <button id="adminTabSettingBtn" onclick="switchAdminTab('setting')" class="tab-btn">
-          <i class="fas fa-gear mr-1.5"></i>Setting
         </button>
         <button id="adminTabTampilanBtn" onclick="switchAdminTab('tampilan')" class="tab-btn">
           <i class="fas fa-palette mr-1.5"></i>Tampilan
@@ -809,9 +812,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         </div>
       </div>
 
-      <!-- Admin Tab Setting: GPS & Radius, Folder Foto, Backup Database (tiap pengaturan = satu kartu terpisah) -->
-      <div id="adminTabSetting" class="hidden max-w-2xl space-y-6">
-      <div class="bg-white rounded-2xl shadow-sm border p-6 space-y-6">
+      <div id="adminTabGps" class="hidden max-w-2xl bg-white rounded-2xl shadow-sm border p-6 space-y-6">
         <div class="border-b pb-4">
           <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-satellite-dish text-primary-600 mr-2"></i>Pengaturan Titik Pusat Sekolah, Radius & Proteksi GPS</h2>
           <p class="text-xs text-slate-500 mt-1">Tentukan titik koordinat lokasi pusat sekolah, batas jarak radius toleransi, dan aktifkan sakelar proteksi Fake GPS.</p>
@@ -870,7 +871,27 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         </form>
       </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border p-6 space-y-4">
+      <!-- Admin Tab Browser -->
+      <div id="adminTabBrowser" class="hidden max-w-2xl bg-white rounded-2xl shadow-sm border p-6 space-y-6">
+        <div class="border-b pb-4">
+          <h2 class="text-lg font-bold text-slate-800"><i class="fab fa-chrome text-primary-600 mr-2"></i>Pengaturan Pembatasan Browser</h2>
+          <p class="text-xs text-slate-500 mt-1">Atur kebijakan browser yang diizinkan untuk siswa saat melakukan presensi mandiri.</p>
+        </div>
+        
+        <div class="space-y-4">
+          <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+            <div>
+              <h4 class="text-sm font-bold text-slate-800">Wajib Gunakan Google Chrome</h4>
+              <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa hanya bisa melakukan presensi jika mengakses aplikasi dari peramban Google Chrome.</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="toggleRequireChrome" onchange="updateBrowserSettings()" class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+            </label>
+          </div>
+        </div>
+
+        <div class="border-t pt-6 space-y-4">
           <div>
             <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-folder-open text-primary-600 mr-2"></i>Folder Foto Bukti Presensi</h2>
             <p class="text-xs text-slate-500 mt-1">Nama folder Google Drive tempat foto selfie presensi disimpan. Jika folder sudah ada di Drive, namanya akan diganti otomatis. Jika folder sudah terhapus, folder baru akan dibuat dengan nama yang Anda simpan.</p>
@@ -887,7 +908,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border p-6 space-y-4">
+        <div class="border-t pt-6 space-y-4">
           <div>
             <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-database text-primary-600 mr-2"></i>Backup Sheet Database</h2>
             <p class="text-xs text-slate-500 mt-1">Salinan seluruh sheet database disimpan ke folder Google Drive pilihan Anda. Folder harus sudah dibagikan ke akun pemilik script dengan izin <b>Editor</b>. Karena salinan berisi seluruh data (termasuk akun pengguna), pastikan folder ini <b>hanya bisa diakses admin</b>.</p>
@@ -1156,7 +1177,6 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           <div id="waliTabContainer" class="tab-bar">
             <button id="tabInputBtn" onclick="switchWaliTab('input')" class="tab-btn tab-btn-active"><i class="fas fa-pen-to-square mr-1"></i>Input Presensi</button>
             <button id="tabRekapAbsensiBtn" onclick="switchWaliTab('rekapabsensi')" class="tab-btn" style="display:none"><i class="fas fa-clipboard-list mr-1"></i>Rekap Presensi</button>
-            <button id="tabRekapGabungBtn" onclick="switchWaliTab('rekapgabung')" class="tab-btn" style="display:none"><i class="fas fa-calendar-days mr-1"></i>Rekap</button>
             <button id="tabRekapBtn" onclick="switchWaliTab('rekap')" class="tab-btn"><i class="fas fa-calendar-days mr-1"></i>Rekap Bulanan</button>
             <button id="tabMatrixBtn" onclick="switchWaliTab('matrix')" class="tab-btn"><i class="fas fa-table-list mr-1"></i>Rekap Harian</button>
             <button id="tabBuktiFotoBtn" onclick="switchWaliTab('buktifoto')" class="tab-btn"><i class="fas fa-camera mr-1"></i>Bukti Foto</button>
@@ -1195,14 +1215,6 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
             </thead>
             <tbody id="attendanceTableBody" class="divide-y"></tbody>
           </table>
-        </div>
-      </div>
-
-      <!-- Pilihan Bulanan/Harian: hanya tampil saat tab Rekap digabung (saklar Scan Barcode aktif) -->
-      <div id="waliRekapSubBar" class="hidden">
-        <div class="inline-flex bg-slate-100 border rounded-xl p-1 gap-1">
-          <button id="waliRekapSubRekap" type="button" onclick="setWaliRekapSub('rekap')" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-white shadow text-primary-700"><i class="fas fa-calendar-days mr-1.5"></i>Bulanan</button>
-          <button id="waliRekapSubMatrix" type="button" onclick="setWaliRekapSub('matrix')" class="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-500"><i class="fas fa-table-list mr-1.5"></i>Harian</button>
         </div>
       </div>
 
@@ -1557,10 +1569,10 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     <div id="kepsekDashboard" class="hidden space-y-6">
       <div class="tab-bar">
         <button id="kepsekTabMatrixBtn" onclick="switchKepsekTab('matrix')" class="tab-btn tab-btn-active">
-          <i class="fas fa-chart-line mr-1.5"></i>Rekap Harian
+          <i class="fas fa-chart-line mr-1.5"></i>Matriks Rekap Bulanan
         </button>
         <button id="kepsekTabBuktiFotoBtn" onclick="switchKepsekTab('buktifoto')" class="tab-btn">
-          <i class="fas fa-camera mr-1.5"></i>Bukti Foto
+          <i class="fas fa-camera mr-1.5"></i>Tab Bukti Foto (Semua Kelas)
         </button>
         <button id="kepsekTabKeteranganBtn" onclick="switchKepsekTab('keterangan')" class="tab-btn">
           <i class="fas fa-file-pen mr-1.5"></i>Keterangan
@@ -1963,6 +1975,18 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
 
     const todayLocalStr = getLocalDateTimeString();
 
+    function isChromeBrowser() {
+      const ua = navigator.userAgent;
+      const isChromium = window.chrome !== null && typeof window.chrome !== "undefined";
+      const isOpera = ua.indexOf("OPR") > -1 || ua.indexOf("Opera") > -1;
+      const isEdge = ua.indexOf("Edg") > -1;
+      const isBrave = (navigator.brave && typeof navigator.brave.isBrave === "function");
+      const isUC = ua.indexOf("UCBrowser") > -1;
+      const isSamsung = ua.indexOf("SamsungBrowser") > -1;
+
+      return isChromium && !isOpera && !isEdge && !isBrave && !isUC && !isSamsung;
+    }
+
     /* ===== STATUS KONEKSI (Revisi 97) =====
        Membedakan 3 penyebab lambat agar pengguna tidak selalu mengira "server sibuk":
        - Offline        : perangkat tidak punya internet.
@@ -2324,13 +2348,12 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     });
 
     /* ===== SESI LOGIN =====
-       Admin, Guru Wali Kelas, Sekretaris, Kepala Sekolah, Wakil: disimpan di sessionStorage -> tetap login saat halaman
-                di-refresh, tetapi tab baru / tab yang ditutup wajib login ulang.
-       Lainnya (Siswa, Barcode): tetap di localStorage (login bertahan seperti semula). */
-    const SESSION_PER_TAB_ROLES = ['Admin', 'Guru Wali Kelas', 'Sekretaris', 'Kepala Sekolah', 'Wakil Kepala Sekolah'];
+       Admin  : disimpan di sessionStorage -> tetap login saat halaman di-refresh,
+                tetapi hilang saat tab/aplikasi ditutup (wajib login ulang).
+       Lainnya: tetap di localStorage (login bertahan seperti semula). */
     function saveSession(user) {
       try {
-        if (user && SESSION_PER_TAB_ROLES.indexOf(user.role) >= 0) {
+        if (user && user.role === 'Admin') {
           localStorage.removeItem('absensi_user');
           sessionStorage.setItem('absensi_user', JSON.stringify(user));
         } else {
@@ -2351,8 +2374,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         if (raw) {
           try {
             const u = JSON.parse(raw);
-            // Sesi lama Admin/Wali/Sekretaris/Kepsek/Wakil di localStorage tidak dipulihkan lagi
-            if (u && SESSION_PER_TAB_ROLES.indexOf(u.role) >= 0) { localStorage.removeItem('absensi_user'); return null; }
+            // Sesi Admin lama di localStorage tidak dipulihkan lagi
+            if (u && u.role === 'Admin') { localStorage.removeItem('absensi_user'); return null; }
           } catch (e) { return null; }
         }
       }
@@ -3367,6 +3390,12 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
        try {
         cfg = cfg || {};
 
+        // 1. Cek Pengaturan Browser
+        if (cfg.wajibChrome && !isChromeBrowser()) {
+          fail("Gagal Absen! Sistem mengharuskan presensi dilakukan menggunakan browser Google Chrome.");
+          return;
+        }
+
         if (!statusBukti && cfg.aktifBarcode === true && !capturedBarcodeTicket) {
           fail("Gagal Absen! Barcode wajib discan terlebih dahulu.");
           return;
@@ -3523,13 +3552,15 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
 
     function switchAdminTab(tab) {
       const isUsers = (tab === 'users');
-      const isSetting = (tab === 'setting');
+      const isGps = (tab === 'gps');
+      const isBrowser = (tab === 'browser');
       const isVerifikasi = (tab === 'verifikasi');
       const isReset = (tab === 'reset');
       const isTampilan = (tab === 'tampilan');
 
       document.getElementById('adminTabUsers').classList.toggle('hidden', !isUsers);
-      document.getElementById('adminTabSetting').classList.toggle('hidden', !isSetting);
+      document.getElementById('adminTabGps').classList.toggle('hidden', !isGps);
+      document.getElementById('adminTabBrowser').classList.toggle('hidden', !isBrowser);
       document.getElementById('adminTabVerifikasi').classList.toggle('hidden', !isVerifikasi);
       document.getElementById('adminTabReset').classList.toggle('hidden', !isReset);
       document.getElementById('adminTabTampilan').classList.toggle('hidden', !isTampilan);
@@ -3538,18 +3569,18 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const inactiveClass = "tab-btn";
 
       document.getElementById('adminTabUserBtn').className = isUsers ? activeClass : inactiveClass;
-      document.getElementById('adminTabSettingBtn').className = isSetting ? activeClass : inactiveClass;
+      document.getElementById('adminTabGpsBtn').className = isGps ? activeClass : inactiveClass;
+      document.getElementById('adminTabBrowserBtn').className = isBrowser ? activeClass : inactiveClass;
       document.getElementById('adminTabVerifikasiBtn').className = isVerifikasi ? activeClass : inactiveClass;
       document.getElementById('adminTabResetBtn').className = isReset ? activeClass : inactiveClass;
       document.getElementById('adminTabTampilanBtn').className = isTampilan ? activeClass : inactiveClass;
 
-      if (isSetting) {
+      if (isGps) {
         loadAdminGpsConfig();
         loadFakeGpsSettings();
         loadLokasiKeteranganSetting();
-        loadFotoFolderSettings();
-        loadBackupSettings();
-      } else if (isVerifikasi) loadVerifikasiSettings();
+      } else if (isBrowser) loadBrowserSettings();
+      else if (isVerifikasi) loadVerifikasiSettings();
       else if (isUsers) loadAdminUsers();
       else if (isTampilan) loadThemeSettingsAdmin();
     }
@@ -3586,6 +3617,16 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         presensiConfig = null;
         if (!res.success) { alert('Gagal menyimpan: ' + res.message); loadLokasiKeteranganSetting(); }
       }).saveLokasiKeteranganSetting({ aktif: aktif });
+    }
+
+    function loadBrowserSettings() {
+      showStatusBar('Memuat pengaturan browser...', 30);
+      gsr().withSuccessHandler(settings => {
+        hideStatusBar();
+        document.getElementById('toggleRequireChrome').checked = settings.wajibChrome;
+      }).getBrowserSettings();
+      loadFotoFolderSettings();
+      loadBackupSettings();
     }
 
     function renderFotoFolderStatus(res) {
@@ -3789,6 +3830,16 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         btn.disabled = false;
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
       }).saveFotoFolderSettings({ nama: nama });
+    }
+
+    function updateBrowserSettings() {
+      const wajibChrome = document.getElementById('toggleRequireChrome').checked;
+
+      showStatusBar('Menyimpan pengaturan browser...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (!res.success) alert('Gagal menyimpan: ' + res.message);
+      }).saveBrowserSettings({ wajibChrome: wajibChrome });
     }
 
     function loadVerifikasiSettings() {
@@ -4198,18 +4249,6 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           const el = document.getElementById(id);
           if (el) el.style.display = aktif ? 'inline-block' : 'none';
         });
-        // Saklar Scan Barcode aktif -> Rekap Bulanan & Rekap Harian digabung jadi 1 tab "Rekap" (tab bar tidak terlalu panjang)
-        const sebelumnya = !!window._waliRekapMerged;
-        window._waliRekapMerged = !!aktif;
-        const btnR = document.getElementById('tabRekapBtn'), btnM = document.getElementById('tabMatrixBtn'), btnG = document.getElementById('tabRekapGabungBtn');
-        if (btnR) btnR.style.display = aktif ? 'none' : 'inline-block';
-        if (btnM) btnM.style.display = aktif ? 'none' : 'inline-block';
-        if (btnG) btnG.style.display = aktif ? 'inline-block' : 'none';
-        if (sebelumnya !== !!aktif) {
-          const rekapAktif = !document.getElementById('waliTabRekap').classList.contains('hidden');
-          const matrixAktif = !document.getElementById('waliTabMatrix').classList.contains('hidden');
-          if (rekapAktif || matrixAktif) { switchWaliTab(matrixAktif ? 'matrix' : 'rekap'); return; }
-        }
         const sedangDiTabBarcode = !document.getElementById('waliTabBarcode').classList.contains('hidden') ||
                                    !document.getElementById('waliTabVerifBarcode').classList.contains('hidden');
         if (!aktif && sedangDiTabBarcode) switchWaliTab('input');
@@ -4217,25 +4256,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       fetchPresensiConfig().then(cfg => apply(!!cfg && cfg.aktifBarcode === true), () => apply(true));
     }
 
-    function setWaliRekapSub(sub) {
-      window._waliRekapSub = (sub === 'matrix') ? 'matrix' : 'rekap';
-      switchWaliTab('rekapgabung');
-    }
-
     function switchWaliTab(tab) {
-      // Mode gabung: tombol "Rekap" memakai pilihan Bulanan/Harian; tab lama diarahkan ke tombol gabungan
-      let btnKey = tab;
-      if (tab === 'rekapgabung') tab = (window._waliRekapSub === 'matrix') ? 'matrix' : 'rekap';
-      if ((tab === 'rekap' || tab === 'matrix') && window._waliRekapMerged) { btnKey = 'rekapgabung'; window._waliRekapSub = tab; }
-      const subBar = document.getElementById('waliRekapSubBar');
-      if (subBar) {
-        subBar.classList.toggle('hidden', btnKey !== 'rekapgabung');
-        const onM = (tab === 'matrix');
-        const sr = document.getElementById('waliRekapSubRekap'), sm = document.getElementById('waliRekapSubMatrix');
-        const on = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-white shadow text-primary-700', off = 'px-4 py-1.5 rounded-lg text-xs font-bold text-slate-500';
-        if (sr) sr.className = onM ? off : on;
-        if (sm) sm.className = onM ? on : off;
-      }
       const tabIds = ['waliTabInput', 'waliTabRekap', 'waliTabMatrix', 'waliTabBuktiFoto', 'waliTabSiswa', 'waliTabAkun', 'waliTabBarcode', 'waliTabVerifBarcode', 'waliTabRekapAbsensi', 'waliTabKeterangan'];
       tabIds.forEach((id, idx) => {
         let active = false;
@@ -4259,10 +4280,10 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const activeClass = "tab-btn tab-btn-active";
       const inactiveClass = "tab-btn";
 
-      ['tabInputBtn', 'tabRekapBtn', 'tabMatrixBtn', 'tabRekapGabungBtn', 'tabBuktiFotoBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn', 'tabRekapAbsensiBtn', 'tabKeteranganBtn'].forEach(btnId => {
+      ['tabInputBtn', 'tabRekapBtn', 'tabMatrixBtn', 'tabBuktiFotoBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn', 'tabRekapAbsensiBtn', 'tabKeteranganBtn'].forEach(btnId => {
         const el = document.getElementById(btnId);
         if (el) {
-          const match = (btnId.replace('tab', '').replace('Btn', '').toLowerCase() === btnKey);
+          const match = (btnId.replace('tab', '').replace('Btn', '').toLowerCase() === tab);
           el.className = match ? activeClass : inactiveClass;
         }
       });
