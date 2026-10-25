@@ -2324,10 +2324,11 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     });
 
     /* ===== SESI LOGIN =====
-       Admin, Guru Wali Kelas, Sekretaris, Kepala Sekolah, Wakil: disimpan di sessionStorage -> tetap login saat halaman
+       Admin, Guru Wali Kelas, Sekretaris: disimpan di sessionStorage -> tetap login saat halaman
                 di-refresh, tetapi tab baru / tab yang ditutup wajib login ulang.
-       Lainnya (Siswa, Barcode): tetap di localStorage (login bertahan seperti semula). */
-    const SESSION_PER_TAB_ROLES = ['Admin', 'Guru Wali Kelas', 'Sekretaris', 'Kepala Sekolah', 'Wakil Kepala Sekolah'];
+       Kepala Sekolah, Wakil, Siswa, Barcode: disimpan di localStorage -> login bertahan di browser
+                (server menerbitkan token tahan lama ~30 hari untuk Kepsek/Wakil/Siswa; keluar manual = hapus). */
+    const SESSION_PER_TAB_ROLES = ['Admin', 'Guru Wali Kelas', 'Sekretaris'];
     function saveSession(user) {
       try {
         if (user && SESSION_PER_TAB_ROLES.indexOf(user.role) >= 0) {
@@ -2418,11 +2419,12 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         } else {
           document.getElementById('panelTitleText').innerText = `Panel Guru Wali Kelas`;
           document.getElementById('waliInfoTag').innerText = `Wali Kelas ${user.kelas} - ${user.jurusan}`;
-          ['tabRekapBtn', 'tabMatrixBtn', 'tabBuktiFotoBtn', 'tabKeteranganBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn'].forEach(id => {
+          ['tabBuktiFotoBtn', 'tabKeteranganBtn', 'tabSiswaBtn', 'tabAkunBtn'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = 'inline-block';
           });
-          ['tabBarcodeBtn', 'tabVerifBarcodeBtn'].forEach(id => {   // tampil/tidaknya mengikuti saklar Scan Barcode di panel admin
+          // Rekap Bulanan/Harian/Rekap(gabung) & Barcode ditentukan setelah saklar Scan Barcode diketahui (refreshWaliBarcodeTabs) -> tidak berkedip
+          ['tabRekapBtn', 'tabMatrixBtn', 'tabRekapGabungBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = 'none';
           });
