@@ -1,21 +1,4 @@
 <!DOCTYPE html>
-<!--
-  REVISI 95 — Jadwal backup otomatis fleksibel (Admin > Atur Browser & Folder)
-  - Pilihan frekuensi (setiap hari / setiap akhir bulan), jam backup (WIB), dan "simpan N backup otomatis terakhir".
-  - Bawaan sama dengan revisi 94 (akhir bulan 23.00, tidak ada yang dihapus). Backend: Code revisi 95.
--->
-<!--
-  REVISI 94 — Backup sheet database (Admin > Atur Browser & Folder)
-  - Kolom link folder Google Drive (harus sudah dibagikan ke akun pemilik script sebagai Editor).
-  - Tombol "Backup Sekarang" (manual) dan sakelar backup otomatis tiap akhir bulan pukul 23.00 WIB.
-  - Menampilkan hasil backup terakhir. Backend: Code_revisi_94_backup_database.js.
--->
-<!--
-  REVISI 92 — Loading bar diganti dengan versi ringan dari aplikasi E-Learning rev. 18
-  - Bar tipis di atas + pil status di bawah (menggantikan loading bar baterai rev. 89).
-  - Timer 300 ms (sebelumnya 80 ms), tanpa backdrop-blur/shadow berat, timer mati saat idle.
-  - showStatusBar()/hideStatusBar() tetap sama; backend (kode_revisi_91_*.js) tidak berubah.
--->
 <html lang="id">
 <head>
   <meta charset="UTF-8">
@@ -306,6 +289,30 @@
     .net-badge.net-ok { display: none; }
     @media (prefers-reduced-motion: reduce) { .net-badge { transition: none; } }
   </style>
+<style id="spPolish">
+/* ===== REVISI 98: poles tampilan ringan (hanya CSS, tanpa gambar/skrip tambahan) ===== */
+/* Header: gradasi halus + garis emas */
+.app-header { background: linear-gradient(135deg, var(--primary-900), var(--primary-800)); box-shadow: inset 0 -3px 0 var(--secondary-500), 0 6px 18px -10px rgb(15 28 55 / .55); }
+.brand-mark { box-shadow: 0 0 0 2px rgb(230 176 60 / .35); }
+/* Tab: ikon seragam, tab aktif bergradasi dengan ikon emas */
+.tab-bar .tab-btn { border-radius: 12px; padding: .6rem 1rem; letter-spacing: .005em; }
+.tab-bar .tab-btn > i:first-child { display: inline-block; width: 1.15em; text-align: center; margin-right: .4rem !important; font-size: .95em; color: var(--p); opacity: .8; transition: transform .18s, color .18s, opacity .18s; }
+.tab-bar .tab-btn:hover:not(.tab-btn-active) > i:first-child { transform: translateY(-1px) scale(1.12); opacity: 1; }
+.tab-bar .tab-btn-active, .tab-bar .tab-btn-active:hover { background: var(--p); background: linear-gradient(135deg, var(--p), color-mix(in srgb, var(--p) 72%, #000)); }
+.tab-bar .tab-btn-active > i:first-child { color: var(--secondary-300, #efc865); opacity: 1; }
+/* Kartu: sudut lebih lembut & bayangan berlapis */
+.rounded-2xl.shadow-sm { box-shadow: 0 1px 2px rgb(20 27 46 / .05), 0 10px 24px -14px rgb(20 27 46 / .18); border-color: var(--slate-200); }
+/* Tabel: judul kolom rapi, baris disorot penanda emas saat disentuh */
+body table thead th { color: var(--slate-600); }
+body table tbody tr { transition: box-shadow .12s; }
+body table tbody tr:hover { box-shadow: inset 3px 0 0 var(--secondary-500); }
+/* Tombol: bayangan halus agar terasa bisa ditekan */
+body button.bg-primary-600, body button.bg-primary-700 { box-shadow: 0 6px 14px -8px var(--primary-700); }
+/* Panel tab muncul dengan fade singkat */
+@keyframes spFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="kepsekSection"]:not(.hidden) { animation: spFade .18s ease-out; }
+@media (prefers-reduced-motion: reduce) { div[id^="adminTab"], div[id^="waliTab"], div[id^="kepsekSection"] { animation: none !important; } .tab-bar .tab-btn > i:first-child { transition: none; } }
+</style>
 <style id="spDialogStyle">
 .sp-dlg-back{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;background:rgba(15,23,42,.55);opacity:0;transition:opacity .15s ease;font-family:inherit}
 .sp-dlg-back.show{opacity:1}
@@ -1108,9 +1115,9 @@
             </div>
             <div class="p-4 space-y-3">
               <div class="tab-bar">
-                <button type="button" class="tab-btn tab-btn-active">Kelola Akun</button>
-                <button type="button" class="tab-btn">Verifikasi</button>
-                <button type="button" class="tab-btn">Tampilan</button>
+                <button type="button" class="tab-btn tab-btn-active"><i class="fas fa-users-cog mr-1"></i>Kelola Akun</button>
+                <button type="button" class="tab-btn"><i class="fas fa-check-double mr-1"></i>Verifikasi</button>
+                <button type="button" class="tab-btn"><i class="fas fa-palette mr-1"></i>Tampilan</button>
               </div>
               <div class="flex flex-wrap items-center gap-2">
                 <button type="button" class="bg-primary-700 hover:bg-primary-800 text-white px-4 py-2 rounded-xl text-xs font-bold">Tombol Utama</button>
@@ -1165,15 +1172,15 @@
         </div>
         <div class="tab-bar-row">
           <div id="waliTabContainer" class="tab-bar">
-            <button id="tabInputBtn" onclick="switchWaliTab('input')" class="tab-btn tab-btn-active">Input Presensi</button>
+            <button id="tabInputBtn" onclick="switchWaliTab('input')" class="tab-btn tab-btn-active"><i class="fas fa-pen-to-square mr-1"></i>Input Presensi</button>
             <button id="tabRekapAbsensiBtn" onclick="switchWaliTab('rekapabsensi')" class="tab-btn" style="display:none"><i class="fas fa-clipboard-list mr-1"></i>Rekap Presensi</button>
-            <button id="tabRekapBtn" onclick="switchWaliTab('rekap')" class="tab-btn">Rekap Bulanan</button>
-            <button id="tabMatrixBtn" onclick="switchWaliTab('matrix')" class="tab-btn">Rekap Harian</button>
+            <button id="tabRekapBtn" onclick="switchWaliTab('rekap')" class="tab-btn"><i class="fas fa-calendar-days mr-1"></i>Rekap Bulanan</button>
+            <button id="tabMatrixBtn" onclick="switchWaliTab('matrix')" class="tab-btn"><i class="fas fa-table-list mr-1"></i>Rekap Harian</button>
             <button id="tabBuktiFotoBtn" onclick="switchWaliTab('buktifoto')" class="tab-btn"><i class="fas fa-camera mr-1"></i>Bukti Foto</button>
             <button id="tabKeteranganBtn" onclick="switchWaliTab('keterangan')" class="tab-btn"><i class="fas fa-file-pen mr-1"></i>Keterangan</button>
             <button id="tabBarcodeBtn" onclick="switchWaliTab('barcode')" class="tab-btn"><i class="fas fa-qrcode mr-1"></i>Barcode</button>
             <button id="tabVerifBarcodeBtn" onclick="switchWaliTab('verifbarcode')" class="tab-btn"><i class="fas fa-user-check mr-1"></i>Verifikasi Barcode</button>
-            <button id="tabSiswaBtn" onclick="switchWaliTab('siswa')" class="tab-btn">Kelola Siswa</button>
+            <button id="tabSiswaBtn" onclick="switchWaliTab('siswa')" class="tab-btn"><i class="fas fa-users mr-1"></i>Kelola Siswa</button>
             <button id="tabAkunBtn" onclick="switchWaliTab('akun')" class="tab-btn"><i class="fas fa-user-cog mr-1"></i>Akun Saya</button>
           </div>
         </div>
