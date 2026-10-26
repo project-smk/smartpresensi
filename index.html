@@ -1030,6 +1030,10 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
 
       <!-- Admin Tab Verifikasi -->
       <div id="adminTabVerifikasi" class="hidden max-w-2xl bg-white rounded-2xl shadow-sm border p-6 space-y-6">
+        <div id="adminSettingLoadFail" class="hidden"><div class="flex items-center justify-between gap-3 p-3 rounded-xl border border-amber-300 bg-amber-50 text-xs text-amber-800">
+          <span><i class="fas fa-triangle-exclamation mr-1"></i>Sebagian pengaturan belum berhasil dimuat dari server. Pengaturan yang belum termuat dikunci supaya tidak tersimpan kosong.</span>
+          <button type="button" onclick="loadVerifikasiSettings()" class="flex-none bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg font-bold"><i class="fas fa-rotate mr-1"></i>Muat ulang</button>
+        </div></div>
         <div class="border-b pb-4">
           <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-check-double text-primary-600 mr-2"></i>Pengaturan Verifikasi Wali Kelas</h2>
           <p class="text-xs text-slate-500 mt-1">Atur apakah tahapan verifikasi oleh wali kelas diaktifkan atau dinonaktifkan (bypass) untuk presensi mandiri siswa dan presensi sekretaris.</p>
@@ -3931,21 +3935,54 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       }).saveFotoFolderSettings({ nama: nama });
     }
 
+    /* ===== PEMUAT PENGATURAN ADMIN (Revisi 99) =====
+       Setiap pemuat memakai runServer (retry otomatis). Kontrol dikunci selama memuat dan tetap terkunci bila gagal,
+       sehingga formulir kosong tidak bisa tersimpan menimpa isi sheet. Respons lama yang terlambat diabaikan (seq). */
+    const _adminLoadSeq = {}, _adminLoadFailed = {};
+    function adminLockIds_(ids, lock, ph) {
+      ids.forEach(id => {
+        const e = document.getElementById(id); if (!e) return;
+        e.disabled = !!lock;
+        if (e.type !== 'checkbox') e.placeholder = ph || '';
+      });
+    }
+    function adminLoadSetting_(key, fn, ids, apply) {
+      const seq = (_adminLoadSeq[key] || 0) + 1;
+      _adminLoadSeq[key] = seq;
+      adminLockIds_(ids, true, 'Memuat...');
+      return runServer(fn, [], { retries: 3, baseDelay: 1500 }).then(res => {
+        if (seq !== _adminLoadSeq[key]) return;
+        if (!res || typeof res !== 'object') throw new Error('Respons kosong');
+        apply(res);
+        adminLockIds_(ids, false);
+        _adminLoadFailed[key] = false;
+      }).catch(err => {
+        if (seq !== _adminLoadSeq[key]) return;
+        console.error('Gagal memuat ' + fn, err);
+        adminLockIds_(ids, true, 'Gagal memuat');
+        _adminLoadFailed[key] = true;
+      }).then(() => {
+        const b = document.getElementById('adminSettingLoadFail');
+        if (b) b.classList.toggle('hidden', !Object.keys(_adminLoadFailed).some(k => _adminLoadFailed[k]));
+      });
+    }
     function loadVerifikasiSettings() {
       showStatusBar('Memuat pengaturan verifikasi...', 30);
-      gsr().withSuccessHandler(settings => {
-        hideStatusBar();
-        document.getElementById('toggleVerifMandiri').checked = settings.wajibVerifMandiri;
-        document.getElementById('toggleVerifSekretaris').checked = settings.wajibVerifSekretaris;
-        document.getElementById('toggleSekBukti').checked = settings.sekretarisVerifBukti === true;
-      }).getVerifikasiSettings();
-      gsr().withSuccessHandler(f => {
-        document.getElementById('toggleFiturSelfie').checked = f.aktifSelfie;
-        document.getElementById('toggleFiturBarcode').checked = f.aktifBarcode;
-        document.getElementById('toggleFiturGps').checked = f.aktifGps;
-      }).getFiturPresensi();
-      loadPjjSetting();
-      loadNilaiSetting();
+      const ps = [
+        adminLoadSetting_('verif', 'getVerifikasiSettings', ['toggleVerifMandiri', 'toggleVerifSekretaris', 'toggleSekBukti'], settings => {
+          document.getElementById('toggleVerifMandiri').checked = settings.wajibVerifMandiri;
+          document.getElementById('toggleVerifSekretaris').checked = settings.wajibVerifSekretaris;
+          document.getElementById('toggleSekBukti').checked = settings.sekretarisVerifBukti === true;
+        }),
+        adminLoadSetting_('fitur', 'getFiturPresensi', ['toggleFiturSelfie', 'toggleFiturBarcode', 'toggleFiturGps'], f => {
+          document.getElementById('toggleFiturSelfie').checked = f.aktifSelfie;
+          document.getElementById('toggleFiturBarcode').checked = f.aktifBarcode;
+          document.getElementById('toggleFiturGps').checked = f.aktifGps;
+        }),
+        loadPjjSetting(),
+        loadNilaiSetting()
+      ];
+      Promise.all(ps).then(() => hideStatusBar(), () => hideStatusBar());
     }
 
     /* ===== SAKLAR STATUS PJJ (admin) ===== */
@@ -3983,12 +4020,12 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       fetchPresensiConfig().then(cfg => applyPjjVisibility(!!cfg && cfg.aktifPjj === true)).catch(() => {});
     }
     function loadPjjSetting() {
-      gsr().withSuccessHandler(s => {
+      return adminLoadSetting_('pjj', 'getPjjSetting', ['togglePjj', 'togglePjjVerif'], r => {
         const el = document.getElementById('togglePjj');
-        if (el) el.checked = !!(s && s.aktif);
+        if (el) el.checked = !!r.aktif;
         const ev = document.getElementById('togglePjjVerif');
-        if (ev) ev.checked = !(s && s.wajibVerif === false);
-      }).getPjjSetting();
+        if (ev) ev.checked = !(r.wajibVerif === false);
+      });
     }
     function updatePjjSetting() {
       const aktif = document.getElementById('togglePjj').checked;
@@ -4017,12 +4054,11 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     /* ===== PENILAIAN PRESENSI (admin) ===== */
     const NIL_FIELDS = { nilToleransi: 'toleransi', nilPoinHadir: 'poinHadir', nilPoinTerlambat: 'poinTerlambat', nilPoinSakit: 'poinSakit', nilPoinIzin: 'poinIzin', nilPoinAlpa: 'poinAlpa', nilBatasA: 'batasA', nilBatasB: 'batasB', nilBatasC: 'batasC' };
     function loadNilaiSetting() {
-      gsr().withSuccessHandler(s => {
-        if (!s) return;
-        const t = document.getElementById('toggleNilaiTampil'); if (t) t.checked = !!s.tampil;
-        const j = document.getElementById('nilJamMasuk'); if (j) j.value = s.jamMasuk || '07:00';
-        Object.keys(NIL_FIELDS).forEach(id => { const e = document.getElementById(id); if (e) e.value = s[NIL_FIELDS[id]]; });
-      }).getNilaiSetting();
+      return adminLoadSetting_('nilai', 'getNilaiSetting', ['toggleNilaiTampil', 'nilJamMasuk'].concat(Object.keys(NIL_FIELDS)), r => {
+        const t = document.getElementById('toggleNilaiTampil'); if (t) t.checked = !!r.tampil;
+        const j = document.getElementById('nilJamMasuk'); if (j) j.value = r.jamMasuk || '07:00';
+        Object.keys(NIL_FIELDS).forEach(id => { const e = document.getElementById(id); if (e) e.value = r[NIL_FIELDS[id]]; });
+      });
     }
     function updateNilaiTampil() {
       const tampil = document.getElementById('toggleNilaiTampil').checked;
