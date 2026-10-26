@@ -896,6 +896,49 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         </form>
       </div>
 
+        <!-- HARI SEKOLAH & HARI LIBUR (berlaku untuk semua kelas dan jurusan) -->
+        <div class="bg-white rounded-2xl shadow-sm border p-6 space-y-5">
+          <div class="border-b pb-4">
+            <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-calendar-days text-primary-600 mr-2"></i>Hari Sekolah &amp; Hari Libur</h2>
+            <p class="text-xs text-slate-500 mt-1">Berlaku untuk semua kelas dan jurusan. Penilaian presensi hanya menghitung hari sekolah yang bukan hari libur. Siswa yang tidak punya catatan pada hari sekolah yang sudah lewat dihitung Alpa.</p>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Hari sekolah dari:</label>
+              <select id="hsMulai" onchange="hsRenderKalender()" class="w-full border px-3 py-2 rounded-lg text-sm font-semibold bg-white"></select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Sampai:</label>
+              <select id="hsAkhir" onchange="hsRenderKalender()" class="w-full border px-3 py-2 rounded-lg text-sm font-semibold bg-white"></select>
+            </div>
+          </div>
+          <button type="button" onclick="hsSimpanRentang()" class="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-md flex items-center space-x-1.5">
+            <i class="fas fa-save"></i><span>Simpan Hari Sekolah</span>
+          </button>
+          <div class="border-t pt-4 space-y-3">
+            <h3 class="text-sm font-bold text-slate-800">Hari Libur per Bulan</h3>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Bulan:</label>
+                <select id="hsBulan" onchange="hsGantiBulan()" class="w-full border px-3 py-2 rounded-lg text-sm font-semibold bg-white"></select>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Tahun:</label>
+                <select id="hsTahun" onchange="hsGantiBulan()" class="w-full border px-3 py-2 rounded-lg text-sm font-semibold bg-white"></select>
+              </div>
+            </div>
+            <p class="text-xs text-slate-500">Ketuk tanggal untuk menandai atau membatalkan hari libur (merah). Tanggal abu-abu bukan hari sekolah dan tidak dihitung.</p>
+            <div class="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-500">
+              <div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div><div>Min</div>
+            </div>
+            <div id="hsKalender" class="grid grid-cols-7 gap-1"></div>
+            <p id="hsRingkasan" class="text-xs font-semibold text-slate-600"></p>
+            <button type="button" onclick="hsSimpanLibur()" class="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-md flex items-center space-x-1.5">
+              <i class="fas fa-save"></i><span>Simpan Hari Libur Bulan Ini</span>
+            </button>
+          </div>
+        </div>
+
         <div class="bg-white rounded-2xl shadow-sm border p-6 space-y-4">
           <div>
             <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-folder-open text-primary-600 mr-2"></i>Folder Foto Bukti Presensi</h2>
@@ -3657,11 +3700,97 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       if (isSetting) {
         loadAdminGpsConfig();
         loadLokasiKeteranganSetting();
+        loadHariSekolahSetting();
         loadFotoFolderSettings();
         loadBackupSettings();
       } else if (isVerifikasi) loadVerifikasiSettings();
       else if (isUsers) loadAdminUsers();
       else if (isTampilan) loadThemeSettingsAdmin();
+    }
+
+    /* ===== HARI SEKOLAH & HARI LIBUR (admin, tab Setting) ===== */
+    const HS_HARI = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+    const HS_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    let hsData = { mulai: 1, akhir: 5, libur: [] }, hsPilih = new Set(), hsDirty = false, hsInit = false, hsBulanAktif = '';
+    function hsPad(n) { return (n < 10 ? '0' : '') + n; }
+    function hsKeyBulan() { return document.getElementById('hsTahun').value + '-' + hsPad(+document.getElementById('hsBulan').value + 1); }
+    function hsSiapkanKontrol() {
+      if (hsInit) return;
+      hsInit = true;
+      const opt = (arr) => arr.map((t, i) => '<option value="' + (i + 1) + '">' + t + '</option>').join('');
+      document.getElementById('hsMulai').innerHTML = opt(HS_HARI);
+      document.getElementById('hsAkhir').innerHTML = opt(HS_HARI);
+      const now = new Date(), y = now.getFullYear();
+      document.getElementById('hsBulan').innerHTML = HS_BULAN.map((t, i) => '<option value="' + i + '">' + t + '</option>').join('');
+      document.getElementById('hsTahun').innerHTML = [y - 1, y, y + 1].map(v => '<option value="' + v + '">' + v + '</option>').join('');
+      document.getElementById('hsBulan').value = String(now.getMonth());
+      document.getElementById('hsTahun').value = String(y);
+    }
+    function loadHariSekolahSetting() {
+      hsSiapkanKontrol();
+      gsr().withSuccessHandler(s => {
+        if (!s) return;
+        hsData = { mulai: +s.mulai || 1, akhir: +s.akhir || 5, libur: Array.isArray(s.libur) ? s.libur : [] };
+        document.getElementById('hsMulai').value = String(hsData.mulai);
+        document.getElementById('hsAkhir').value = String(hsData.akhir);
+        hsMuatPilihan();
+      }).withFailureHandler(() => alert('Gagal memuat pengaturan hari sekolah.')).getHariSekolahSetting();
+    }
+    function hsMuatPilihan() {
+      hsBulanAktif = hsKeyBulan();
+      hsPilih = new Set(hsData.libur.filter(d => d.indexOf(hsBulanAktif + '-') === 0));
+      hsDirty = false;
+      hsRenderKalender();
+    }
+    async function hsGantiBulan() {
+      if (hsDirty && !(await askConfirm('Perubahan hari libur bulan ini belum disimpan. Pindah bulan dan buang perubahan?'))) {
+        const [y, m] = hsBulanAktif.split('-');
+        document.getElementById('hsTahun').value = y; document.getElementById('hsBulan').value = String(+m - 1);
+        return;
+      }
+      hsMuatPilihan();
+    }
+    function hsRenderKalender() {
+      const box = document.getElementById('hsKalender'); if (!box) return;
+      const mulai = +document.getElementById('hsMulai').value, akhir = +document.getElementById('hsAkhir').value;
+      const y = +document.getElementById('hsTahun').value, m = +document.getElementById('hsBulan').value;
+      const jml = new Date(y, m + 1, 0).getDate(), awal = (new Date(y, m, 1).getDay() + 6) % 7;   // 0 = Senin
+      let html = '', hariSekolah = 0, libur = 0;
+      for (let i = 0; i < awal; i++) html += '<div></div>';
+      for (let d = 1; d <= jml; d++) {
+        const dow = (awal + d - 1) % 7 + 1, key = y + '-' + hsPad(m + 1) + '-' + hsPad(d);
+        const sekolah = dow >= mulai && dow <= akhir, isLibur = hsPilih.has(key);
+        if (!sekolah) { html += '<div class="py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-400 select-none">' + d + '</div>'; continue; }
+        if (isLibur) libur++; else hariSekolah++;
+        html += '<button type="button" onclick="hsToggle(\'' + key + '\')" class="py-2 rounded-lg text-xs font-bold border transition ' +
+          (isLibur ? 'bg-rose-100 text-rose-700 border-rose-300' : 'bg-white text-slate-700 hover:bg-slate-50') + '">' + d + '</button>';
+      }
+      box.innerHTML = html;
+      document.getElementById('hsRingkasan').textContent = 'Bulan ini: ' + hariSekolah + ' hari sekolah efektif, ' + libur + ' hari libur.';
+    }
+    function hsToggle(key) {
+      if (hsPilih.has(key)) hsPilih.delete(key); else hsPilih.add(key);
+      hsDirty = true; hsRenderKalender();
+    }
+    function hsSimpan(payload, sukses) {
+      showStatusBar('Menyimpan pengaturan hari sekolah...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (!res || !res.success) { alert('Gagal menyimpan: ' + ((res && res.message) || 'tidak ada respons')); return; }
+        sukses();
+      }).withFailureHandler(() => { hideStatusBar(); alert('Gagal menyimpan pengaturan.'); }).saveHariSekolahSetting(payload);
+    }
+    function hsSimpanRentang() {
+      const mulai = +document.getElementById('hsMulai').value, akhir = +document.getElementById('hsAkhir').value;
+      if (akhir < mulai) return alert('Hari "sampai" tidak boleh sebelum hari "dari".');
+      hsSimpan({ mulai: mulai, akhir: akhir }, () => { hsData.mulai = mulai; hsData.akhir = akhir; hsRenderKalender(); });
+    }
+    function hsSimpanLibur() {
+      const bulan = hsBulanAktif, daftar = Array.from(hsPilih).sort();
+      hsSimpan({ bulan: bulan, libur: daftar }, () => {
+        hsData.libur = hsData.libur.filter(d => d.indexOf(bulan + '-') !== 0).concat(daftar);
+        hsDirty = false; hsRenderKalender();
+      });
     }
 
     function loadLokasiKeteranganSetting() {
