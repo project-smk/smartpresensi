@@ -177,6 +177,8 @@
     body button:not(:disabled):active { transform: translateY(.5px) scale(.985); }
     /* Saklar admin "Status PJJ": saat mati, semua elemen bertanda pjj-el disembunyikan */
     body.pjj-off .pjj-el { display: none !important; }
+    /* Saklar admin "Tampilkan Nilai Presensi": saat mati, kolom Nilai & Predikat di rekap wali kelas disembunyikan */
+    body.nilai-off .nilai-el { display: none !important; }
     /* Kebalikannya: elemen pjj-off-el hanya tampil saat Status PJJ dimatikan */
     body:not(.pjj-off) .pjj-off-el { display: none !important; }
 
@@ -1276,8 +1278,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
                 <th class="p-4 text-center">Sakit</th>
                 <th class="p-4 text-center pjj-el">PJJ</th>
                 <th class="p-4 text-center text-rose-700">Alpa</th>
-                <th class="p-4 text-center">Nilai</th>
-                <th class="p-4 text-center">Pred.</th>
+                <th class="p-4 text-center nilai-el">Nilai</th>
+                <th class="p-4 text-center nilai-el">Pred.</th>
               </tr>
             </thead>
             <tbody id="waliReportTableBody" class="divide-y"></tbody>
@@ -4374,8 +4376,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       if (tab === 'verifbarcode') initVerifBarcodeTab();
 
       if (tab === 'rekap') {
-        if (appCache.monthlyReportData) renderWaliMonthlyReport(appCache.monthlyReportData);
-        else loadWaliMonthlyReport();
+        // Selalu muat ulang dari server: server membaca pengaturan terbaru (saklar nilai) setiap rekap dibuka.
+        loadWaliMonthlyReport();
       } else if (tab === 'matrix') {
         // Pertama kali dibuka: otomatis pilih bulan & tahun terbaru (bulan berjalan)
         const currentMonthStr = String(new Date().getMonth() + 1).padStart(2, '0');
@@ -4392,8 +4394,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           }
         }
 
-        if (!firstOpenMatrix && appCache.matrixReportData) renderWaliMatrixReport(appCache.matrixReportData);
-        else loadWaliMatrixReport();
+        // Selalu muat ulang dari server agar saklar nilai yang terbaru ikut terbaca.
+        loadWaliMatrixReport();
       } else if (tab === 'rekapabsensi') {
         initSekretarisRekapFilter();
         loadSekretarisRekap();
@@ -4854,6 +4856,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
 
     function renderWaliMonthlyReport(res) {
       applyPjjVisibility(res && res.pjjAktif === true);
+      document.body.classList.toggle('nilai-off', !(res && res.nilaiTampil === true));
       const tbody = document.getElementById('waliReportTableBody');
       tbody.innerHTML = '';
       res.records.forEach((r, index) => {
@@ -4868,8 +4871,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
             <td class="p-4 text-center text-secondary-600">${r.sakit}</td>
             <td class="p-4 text-center text-teal-600 pjj-el">${r.pjj}</td>
             <td class="p-4 text-center font-bold text-rose-700">${r.alpa}</td>
-            <td class="p-4 text-center font-bold">${r.nilai == null ? '–' : r.nilai}</td>
-            <td class="p-4 text-center font-bold">${r.pred || '–'}</td>
+            <td class="p-4 text-center font-bold nilai-el">${r.nilai == null ? '–' : r.nilai}</td>
+            <td class="p-4 text-center font-bold nilai-el">${r.pred || '–'}</td>
           </tr>
         `;
       });
@@ -4962,6 +4965,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
 
     function renderWaliMatrixReport(res) {
       applyPjjVisibility(res && res.pjjAktif === true);
+      document.body.classList.toggle('nilai-off', !(res && res.nilaiTampil === true));
       const thead = document.getElementById('matrixTableHead');
       const tbody = document.getElementById('matrixTableBody');
       thead.innerHTML = '';
@@ -4982,8 +4986,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         <th class="p-2 border text-center text-secondary-700 bg-secondary-50 w-8">S</th>
         <th class="p-2 border text-center text-teal-700 bg-teal-50 w-8 pjj-el">J</th>
         <th class="p-2 border text-center text-rose-700 bg-rose-50 font-bold w-8">A</th>
-        <th class="p-2 border text-center font-bold w-10">Nilai</th>
-        <th class="p-2 border text-center font-bold w-8">Pred</th>
+        <th class="p-2 border text-center font-bold w-10 nilai-el">Nilai</th>
+        <th class="p-2 border text-center font-bold w-8 nilai-el">Pred</th>
       </tr>`;
       thead.innerHTML = headerHtml;
 
@@ -5021,8 +5025,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           <td class="p-2 border text-center text-secondary-700 font-bold bg-secondary-50/50">${s.sakit}</td>
           <td class="p-2 border text-center text-teal-700 font-bold bg-teal-50/50 pjj-el">${s.pjj}</td>
           <td class="p-2 border text-center text-rose-700 font-bold bg-rose-50/50">${s.alpa}</td>
-          <td class="p-2 border text-center font-bold">${s.nilai == null ? '–' : s.nilai}</td>
-          <td class="p-2 border text-center font-bold">${s.pred || '–'}</td>
+          <td class="p-2 border text-center font-bold nilai-el">${s.nilai == null ? '–' : s.nilai}</td>
+          <td class="p-2 border text-center font-bold nilai-el">${s.pred || '–'}</td>
         </tr>`;
         tbody.innerHTML += rowHtml;
       });
