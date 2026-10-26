@@ -955,6 +955,43 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
             <p id="backupTerakhirInfo" class="text-xs text-slate-500"></p>
           </div>
         </div>
+        <!-- Penilaian Presensi (dipindah dari tab Verifikasi) -->
+        <div class="bg-white rounded-2xl shadow-sm border p-6 space-y-4">
+        <div class="border-b pb-4"><h2 class="text-lg font-bold text-slate-800"><i class="fas fa-star-half-stroke text-primary-600 mr-2"></i>Penilaian Presensi</h2></div>
+        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+          <div class="pr-4">
+            <h4 class="text-sm font-bold text-slate-800">Tampilkan Nilai Presensi ke Siswa</h4>
+            <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa melihat kartu &quot;Nilai presensi bulan ini&quot; di halaman presensi dan keterangan waktu presensinya (tepat / terlalu cepat / terlambat). Jika dimatikan, semuanya tidak tampil ke siswa. Nilai tetap tampil untuk wali kelas di rekap.</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer flex-none">
+            <input type="checkbox" id="toggleNilaiTampil" onchange="updateNilaiTampil()" class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+          </label>
+        </div>
+        <div class="p-4 bg-slate-50 rounded-xl border space-y-4">
+          <p class="text-xs text-slate-500">Waktu presensi Hadir dinilai dari jam server: sebelum jam masuk = <b>Terlalu cepat</b>, sampai jam masuk + toleransi = <b>Tepat</b>, lewat itu = <b>Terlambat</b>. Ketiganya tetap dihitung hadir.</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilJamMasuk">Jam masuk sekolah</label><input type="time" id="nilJamMasuk" class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilToleransi">Toleransi terlambat (menit)</label><input type="number" id="nilToleransi" min="0" max="240" class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+          </div>
+          <p class="text-xs font-bold text-slate-700">Poin per status (0–100)</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinHadir">Hadir (termasuk Terlalu cepat)</label><input type="number" id="nilPoinHadir" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinTerlambat">Hadir (Terlambat)</label><input type="number" id="nilPoinTerlambat" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinSakit">Sakit</label><input type="number" id="nilPoinSakit" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinIzin">Izin</label><input type="number" id="nilPoinIzin" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinAlpa">Alpa</label><input type="number" id="nilPoinAlpa" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+          </div>
+          <p class="text-xs font-bold text-slate-700">Batas nilai minimal predikat</p>
+          <div class="grid grid-cols-3 gap-3">
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilBatasA">Predikat A</label><input type="number" id="nilBatasA" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilBatasB">Predikat B</label><input type="number" id="nilBatasB" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilBatasC">Predikat C</label><input type="number" id="nilBatasC" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+          </div>
+          <p class="text-xs text-slate-500">Di bawah batas C = predikat D. PKL dan PJJ tidak dihitung. Hanya hari yang ada siswa berstatus Hadir yang dihitung; siswa tanpa catatan pada hari itu dihitung Alpa (hari ini belum, menunggu harinya selesai).</p>
+          <button type="button" onclick="saveNilaiSettings()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow"><i class="fas fa-save mr-1"></i> Simpan Pengaturan Penilaian</button>
+        </div>
+        </div>
       </div>
 
       <!-- Admin Tab Verifikasi -->
@@ -1017,40 +1054,6 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
             <input type="checkbox" id="togglePjjVerif" onchange="updatePjjVerifSetting()" class="sr-only peer">
             <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
           </label>
-        </div>
-        <div class="border-t pt-4"><h3 class="text-sm font-bold text-slate-800">Penilaian Presensi</h3></div>
-        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
-          <div class="pr-4">
-            <h4 class="text-sm font-bold text-slate-800">Tampilkan Nilai Presensi ke Siswa</h4>
-            <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa melihat kartu &quot;Nilai presensi bulan ini&quot; di halaman presensi dan keterangan waktu presensinya (tepat / terlalu cepat / terlambat). Jika dimatikan, semuanya tidak tampil ke siswa. Nilai tetap tampil untuk wali kelas di rekap.</p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer flex-none">
-            <input type="checkbox" id="toggleNilaiTampil" onchange="updateNilaiTampil()" class="sr-only peer">
-            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-          </label>
-        </div>
-        <div class="p-4 bg-slate-50 rounded-xl border space-y-4">
-          <p class="text-xs text-slate-500">Waktu presensi Hadir dinilai dari jam server: sebelum jam masuk = <b>Terlalu cepat</b>, sampai jam masuk + toleransi = <b>Tepat</b>, lewat itu = <b>Terlambat</b>. Ketiganya tetap dihitung hadir.</p>
-          <div class="grid grid-cols-2 gap-3">
-            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilJamMasuk">Jam masuk sekolah</label><input type="time" id="nilJamMasuk" class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
-            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilToleransi">Toleransi terlambat (menit)</label><input type="number" id="nilToleransi" min="0" max="100" max="240" class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
-          </div>
-          <p class="text-xs font-bold text-slate-700">Poin per status (0–100)</p>
-          <div class="grid grid-cols-2 gap-3">
-            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinHadir">Hadir (termasuk Terlalu cepat)</label><input type="number" id="nilPoinHadir" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
-            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinTerlambat">Hadir (Terlambat)</label><input type="number" id="nilPoinTerlambat" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
-            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinSakit">Sakit</label><input type="number" id="nilPoinSakit" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
-            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinIzin">Izin</label><input type="number" id="nilPoinIzin" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
-            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinAlpa">Alpa</label><input type="number" id="nilPoinAlpa" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
-          </div>
-          <p class="text-xs font-bold text-slate-700">Batas nilai minimal predikat</p>
-          <div class="grid grid-cols-3 gap-3">
-            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilBatasA">Predikat A</label><input type="number" id="nilBatasA" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
-            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilBatasB">Predikat B</label><input type="number" id="nilBatasB" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
-            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilBatasC">Predikat C</label><input type="number" id="nilBatasC" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
-          </div>
-          <p class="text-xs text-slate-500">Di bawah batas C = predikat D. PKL dan PJJ tidak dihitung. Hanya hari yang ada siswa berstatus Hadir yang dihitung; siswa tanpa catatan pada hari itu dihitung Alpa (hari ini belum, menunggu harinya selesai).</p>
-          <button type="button" onclick="saveNilaiSettings()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow"><i class="fas fa-save mr-1"></i> Simpan Pengaturan Penilaian</button>
         </div>
         <div class="border-t pt-4"><h3 class="text-sm font-bold text-slate-800">Verifikasi Wali Kelas</h3></div>
         
