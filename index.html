@@ -633,6 +633,10 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         <p class="text-xs text-slate-500">Pilih status kehadiran, ambil foto selfie Anda, lalu kirim presensi beserta validasi GPS.</p>
       </div>
 
+      <div id="studentNilaiCard" class="hidden p-4 rounded-xl border bg-white">
+        <p class="text-xs font-bold text-slate-500 uppercase">Nilai Presensi Bulan Ini</p>
+        <div id="studentNilaiBody" class="mt-1"></div>
+      </div>
       <div id="studentStatusCard" class="hidden p-4 rounded-xl border flex items-center justify-between transition-all">
         <div class="flex items-center space-x-3">
           <div id="statusBadgeIcon" class="w-10 h-10 rounded-full flex items-center justify-center text-lg"></div>
@@ -1014,6 +1018,40 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
             <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
           </label>
         </div>
+        <div class="border-t pt-4"><h3 class="text-sm font-bold text-slate-800">Penilaian Presensi</h3></div>
+        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+          <div class="pr-4">
+            <h4 class="text-sm font-bold text-slate-800">Tampilkan Nilai Presensi ke Siswa</h4>
+            <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa melihat kartu &quot;Nilai presensi bulan ini&quot; di halaman presensi dan keterangan waktu presensinya (tepat / terlalu cepat / terlambat). Jika dimatikan, semuanya tidak tampil ke siswa. Nilai tetap tampil untuk wali kelas di rekap.</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer flex-none">
+            <input type="checkbox" id="toggleNilaiTampil" onchange="updateNilaiTampil()" class="sr-only peer">
+            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+          </label>
+        </div>
+        <div class="p-4 bg-slate-50 rounded-xl border space-y-4">
+          <p class="text-xs text-slate-500">Waktu presensi Hadir dinilai dari jam server: sebelum jam masuk = <b>Terlalu cepat</b>, sampai jam masuk + toleransi = <b>Tepat</b>, lewat itu = <b>Terlambat</b>. Ketiganya tetap dihitung hadir.</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilJamMasuk">Jam masuk sekolah</label><input type="time" id="nilJamMasuk" class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilToleransi">Toleransi terlambat (menit)</label><input type="number" id="nilToleransi" min="0" max="100" max="240" class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+          </div>
+          <p class="text-xs font-bold text-slate-700">Poin per status (0–100)</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinHadir">Hadir (termasuk Terlalu cepat)</label><input type="number" id="nilPoinHadir" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinTerlambat">Hadir (Terlambat)</label><input type="number" id="nilPoinTerlambat" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinSakit">Sakit</label><input type="number" id="nilPoinSakit" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinIzin">Izin</label><input type="number" id="nilPoinIzin" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilPoinAlpa">Alpa</label><input type="number" id="nilPoinAlpa" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+          </div>
+          <p class="text-xs font-bold text-slate-700">Batas nilai minimal predikat</p>
+          <div class="grid grid-cols-3 gap-3">
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilBatasA">Predikat A</label><input type="number" id="nilBatasA" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilBatasB">Predikat B</label><input type="number" id="nilBatasB" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+            <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilBatasC">Predikat C</label><input type="number" id="nilBatasC" min="0" max="100"  class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
+          </div>
+          <p class="text-xs text-slate-500">Di bawah batas C = predikat D. PKL dan PJJ tidak dihitung. Hanya hari yang ada siswa berstatus Hadir yang dihitung; siswa tanpa catatan pada hari itu dihitung Alpa (hari ini belum, menunggu harinya selesai).</p>
+          <button type="button" onclick="saveNilaiSettings()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow"><i class="fas fa-save mr-1"></i> Simpan Pengaturan Penilaian</button>
+        </div>
         <div class="border-t pt-4"><h3 class="text-sm font-bold text-slate-800">Verifikasi Wali Kelas</h3></div>
         
         <div class="space-y-4">
@@ -1235,6 +1273,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
                 <th class="p-4 text-center">Sakit</th>
                 <th class="p-4 text-center pjj-el">PJJ</th>
                 <th class="p-4 text-center text-rose-700">Alpa</th>
+                <th class="p-4 text-center">Nilai</th>
+                <th class="p-4 text-center">Pred.</th>
               </tr>
             </thead>
             <tbody id="waliReportTableBody" class="divide-y"></tbody>
@@ -2324,12 +2364,13 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     });
 
     /* ===== SESI LOGIN =====
-       Admin  : disimpan di sessionStorage -> tetap login saat halaman di-refresh,
-                tetapi hilang saat tab/aplikasi ditutup (wajib login ulang).
+       Admin & Guru Wali Kelas: disimpan di sessionStorage -> tetap login saat halaman di-refresh,
+                tetapi hilang saat tab/browser ditutup (wajib login ulang dengan username & password).
        Lainnya: tetap di localStorage (login bertahan seperti semula). */
+    function isSecureRole_(role) { return role === 'Admin' || role === 'Guru Wali Kelas'; }
     function saveSession(user) {
       try {
-        if (user && user.role === 'Admin') {
+        if (user && isSecureRole_(user.role)) {
           localStorage.removeItem('absensi_user');
           sessionStorage.setItem('absensi_user', JSON.stringify(user));
         } else {
@@ -2350,8 +2391,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         if (raw) {
           try {
             const u = JSON.parse(raw);
-            // Sesi Admin lama di localStorage tidak dipulihkan lagi
-            if (u && u.role === 'Admin') { localStorage.removeItem('absensi_user'); return null; }
+            // Sesi Admin / Wali Kelas lama di localStorage tidak dipulihkan lagi
+            if (u && isSecureRole_(u.role)) { localStorage.removeItem('absensi_user'); return null; }
           } catch (e) { return null; }
         }
       }
@@ -3261,6 +3302,29 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       document.getElementById('studentNisnDisplay').value = user.nisn;
       checkStudentStatusToday(user.nisn);
       fetchPresensiConfig().then(applyFiturPresensi).catch(() => {});
+      loadStudentNilai();
+    }
+
+
+    /* Kartu nilai presensi siswa: server hanya mengirim data bila saklar admin "Tampilkan Nilai ke Siswa" aktif */
+    function loadStudentNilai() {
+      const card = document.getElementById('studentNilaiCard');
+      if (!card) return;
+      card.classList.add('hidden');
+      runServer('getMyNilaiPresensi', [], { retries: 1 }).then(renderStudentNilai, () => {});
+    }
+    function renderStudentNilai(res) {
+      const card = document.getElementById('studentNilaiCard'), body = document.getElementById('studentNilaiBody');
+      if (!card || !body) return;
+      if (!res || res.tampil !== true) { card.classList.add('hidden'); return; }
+      if (res.nilai === null || res.nilai === undefined) {
+        body.innerHTML = '<p class="text-sm text-slate-500">Belum ada data penilaian bulan ini.</p>';
+      } else {
+        body.innerHTML = '<div class="flex items-baseline space-x-3"><span class="text-4xl font-extrabold text-slate-800">' + escH_(res.nilai) + '</span><span class="text-lg font-bold text-primary-700">Predikat ' + escH_(res.pred) + '</span></div>' +
+          '<p class="text-xs text-slate-500 mt-2">Dari ' + res.hari + ' hari kegiatan · Hadir ' + res.h + ' · Terlambat ' + res.t + ' · Izin ' + res.i + ' · Sakit ' + res.s + ' · Alpa ' + (res.a + res.ao) + '</p>' +
+          '<p class="text-xs text-slate-400 mt-1">Nilai sementara bulan ini, diperbarui berkala. PKL dan PJJ tidak dihitung.</p>';
+      }
+      card.classList.remove('hidden');
     }
 
     function checkStudentStatusToday(nisn) {
@@ -3804,6 +3868,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         document.getElementById('toggleFiturGps').checked = f.aktifGps;
       }).getFiturPresensi();
       loadPjjSetting();
+      loadNilaiSetting();
     }
 
     /* ===== SAKLAR STATUS PJJ (admin) ===== */
@@ -3869,6 +3934,41 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         presensiConfig = null;
         if (!res || !res.success) { alert('Gagal menyimpan: ' + ((res && res.message) || 'tidak ada respons')); loadPjjSetting(); }
       }).withFailureHandler(() => { hideStatusBar(); alert('Gagal menyimpan pengaturan.'); loadPjjSetting(); }).savePjjSetting({ wajibVerif: wajibVerif });
+    }
+
+
+    /* ===== PENILAIAN PRESENSI (admin) ===== */
+    const NIL_FIELDS = { nilToleransi: 'toleransi', nilPoinHadir: 'poinHadir', nilPoinTerlambat: 'poinTerlambat', nilPoinSakit: 'poinSakit', nilPoinIzin: 'poinIzin', nilPoinAlpa: 'poinAlpa', nilBatasA: 'batasA', nilBatasB: 'batasB', nilBatasC: 'batasC' };
+    function loadNilaiSetting() {
+      gsr().withSuccessHandler(s => {
+        if (!s) return;
+        const t = document.getElementById('toggleNilaiTampil'); if (t) t.checked = !!s.tampil;
+        const j = document.getElementById('nilJamMasuk'); if (j) j.value = s.jamMasuk || '07:00';
+        Object.keys(NIL_FIELDS).forEach(id => { const e = document.getElementById(id); if (e) e.value = s[NIL_FIELDS[id]]; });
+      }).getNilaiSetting();
+    }
+    function updateNilaiTampil() {
+      const tampil = document.getElementById('toggleNilaiTampil').checked;
+      showStatusBar('Menyimpan pengaturan tampil nilai...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        presensiConfig = null;
+        if (!res || !res.success) { alert('Gagal menyimpan: ' + ((res && res.message) || 'tidak ada respons')); loadNilaiSetting(); }
+      }).withFailureHandler(() => { hideStatusBar(); alert('Gagal menyimpan pengaturan.'); loadNilaiSetting(); }).saveNilaiSetting({ tampil: tampil });
+    }
+    function saveNilaiSettings() {
+      const p = { jamMasuk: (document.getElementById('nilJamMasuk').value || '').trim() };
+      Object.keys(NIL_FIELDS).forEach(id => { p[NIL_FIELDS[id]] = document.getElementById(id).value; });
+      showStatusBar('Menyimpan pengaturan penilaian...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        presensiConfig = null;
+        if (!res || !res.success) { alert('Gagal menyimpan: ' + ((res && res.message) || 'tidak ada respons')); loadNilaiSetting(); return; }
+        appCache.monthlyReportData = null;
+        appCache.matrixReportData = null;
+        alert(res.message || 'Pengaturan penilaian tersimpan.');
+        loadNilaiSetting();
+      }).withFailureHandler(() => { hideStatusBar(); alert('Gagal menyimpan pengaturan.'); }).saveNilaiSetting(p);
     }
 
     function updateVerifikasiSettings() {
@@ -4765,6 +4865,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
             <td class="p-4 text-center text-secondary-600">${r.sakit}</td>
             <td class="p-4 text-center text-teal-600 pjj-el">${r.pjj}</td>
             <td class="p-4 text-center font-bold text-rose-700">${r.alpa}</td>
+            <td class="p-4 text-center font-bold">${r.nilai == null ? '–' : r.nilai}</td>
+            <td class="p-4 text-center font-bold">${r.pred || '–'}</td>
           </tr>
         `;
       });
@@ -4877,11 +4979,13 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         <th class="p-2 border text-center text-secondary-700 bg-secondary-50 w-8">S</th>
         <th class="p-2 border text-center text-teal-700 bg-teal-50 w-8 pjj-el">J</th>
         <th class="p-2 border text-center text-rose-700 bg-rose-50 font-bold w-8">A</th>
+        <th class="p-2 border text-center font-bold w-10">Nilai</th>
+        <th class="p-2 border text-center font-bold w-8">Pred</th>
       </tr>`;
       thead.innerHTML = headerHtml;
 
       if (!res.records || res.records.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="${res.daysInMonth + (window.pjjAktif === true ? 8 : 7)}" class="p-4 text-center text-slate-400">Belum ada data siswa.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${res.daysInMonth + (window.pjjAktif === true ? 10 : 9)}" class="p-4 text-center text-slate-400">Belum ada data siswa.</td></tr>`;
         return;
       }
 
@@ -4914,6 +5018,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           <td class="p-2 border text-center text-secondary-700 font-bold bg-secondary-50/50">${s.sakit}</td>
           <td class="p-2 border text-center text-teal-700 font-bold bg-teal-50/50 pjj-el">${s.pjj}</td>
           <td class="p-2 border text-center text-rose-700 font-bold bg-rose-50/50">${s.alpa}</td>
+          <td class="p-2 border text-center font-bold">${s.nilai == null ? '–' : s.nilai}</td>
+          <td class="p-2 border text-center font-bold">${s.pred || '–'}</td>
         </tr>`;
         tbody.innerHTML += rowHtml;
       });
