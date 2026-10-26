@@ -234,6 +234,35 @@
     .tab-btn:focus-visible { outline: 2px solid var(--p); outline-offset: 2px; }
     /* Tanpa animasi geser / garis bawah / riak (ripple) */
     body .tab-btn:not(:disabled):active { transform: none; }
+
+    /* Kartu nilai presensi (halaman siswa) */
+    .nilai-card { --nc: #0f766e; --nc-soft: #ccfbf1; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; overflow: hidden; box-shadow: 0 1px 2px rgb(20 27 46 / .04); }
+    .nilai-card.p-A { --nc: #059669; --nc-soft: #d1fae5; }
+    .nilai-card.p-B { --nc: #0369a1; --nc-soft: #e0f2fe; }
+    .nilai-card.p-C { --nc: #b45309; --nc-soft: #fef3c7; }
+    .nilai-card.p-D { --nc: #be123c; --nc-soft: #ffe4e6; }
+    .nilai-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .7rem 1rem; background: var(--nc-soft); border-bottom: 1px solid rgb(0 0 0 / .05); }
+    .nilai-title { font-size: .8125rem; font-weight: 700; color: var(--nc); display: inline-flex; align-items: center; gap: .45rem; }
+    .nilai-bulan { font-size: .75rem; font-weight: 600; color: var(--nc); opacity: .85; white-space: nowrap; }
+    .nilai-body { padding: 1rem; }
+    .nilai-main { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    .nilai-num { font-family: var(--font-display); font-size: 3.25rem; line-height: 1; font-weight: 800; letter-spacing: -.03em; color: #0f172a; }
+    .nilai-pred { display: flex; align-items: center; gap: .6rem; }
+    .nilai-pred-label { font-size: .75rem; font-weight: 600; color: #64748b; text-align: right; line-height: 1.2; }
+    .nilai-pred-huruf { width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; background: var(--nc); color: #fff; font-family: var(--font-display); font-size: 1.75rem; font-weight: 800; }
+    .nilai-bar { height: 8px; border-radius: 999px; background: #e2e8f0; margin-top: .9rem; overflow: hidden; }
+    .nilai-bar > i { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--nc); transition: width .8s cubic-bezier(.2,.7,.2,1); }
+    .nilai-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .4rem; margin-top: .9rem; }
+    .nilai-stat { border-radius: 10px; padding: .5rem .25rem; text-align: center; background: #f8fafc; border: 1px solid #eef2f6; }
+    .nilai-stat b { display: block; font-size: 1.125rem; line-height: 1.2; font-weight: 800; color: #0f172a; }
+    .nilai-stat span { display: block; font-size: .6875rem; font-weight: 600; margin-top: .1rem; color: #64748b; }
+    .nilai-stat.s-h b { color: #047857; } .nilai-stat.s-t b { color: #b45309; } .nilai-stat.s-i b { color: #0369a1; }
+    .nilai-stat.s-s b { color: #6d28d9; } .nilai-stat.s-a b { color: #be123c; }
+    .nilai-stat.s-zero b { color: #94a3b8; }
+    .nilai-note { margin-top: .8rem; font-size: .75rem; color: #94a3b8; }
+    .nilai-kosong { font-size: .875rem; color: #64748b; }
+    @media (max-width: 380px) { .nilai-num { font-size: 2.75rem; } .nilai-pred-label { display: none; } .nilai-stat span { font-size: .625rem; } }
+    @media (prefers-reduced-motion: reduce) { .nilai-bar > i { transition: none; } }
     @media (prefers-reduced-motion: reduce) { .tab-btn { transition: none !important; } }
 
     /* Di layar HP: tab tersusun rapi dalam beberapa baris (tidak perlu geser horizontal) */
@@ -635,9 +664,12 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         <p class="text-xs text-slate-500">Pilih status kehadiran, ambil foto selfie Anda, lalu kirim presensi beserta validasi GPS.</p>
       </div>
 
-      <div id="studentNilaiCard" class="hidden p-4 rounded-xl border bg-white">
-        <p class="text-xs font-bold text-slate-500 uppercase">Nilai Presensi Bulan Ini</p>
-        <div id="studentNilaiBody" class="mt-1"></div>
+      <div id="studentNilaiCard" class="hidden nilai-card">
+        <div class="nilai-head">
+          <span class="nilai-title"><i class="fas fa-chart-line"></i>Nilai presensi bulan ini</span>
+          <span id="studentNilaiBulan" class="nilai-bulan"></span>
+        </div>
+        <div id="studentNilaiBody" class="nilai-body"></div>
       </div>
       <div id="studentStatusCard" class="hidden p-4 rounded-xl border flex items-center justify-between transition-all">
         <div class="flex items-center space-x-3">
@@ -963,7 +995,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
           <div class="pr-4">
             <h4 class="text-sm font-bold text-slate-800">Tampilkan Nilai Presensi ke Siswa</h4>
-            <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa melihat kartu &quot;Nilai presensi bulan ini&quot; di halaman presensi dan keterangan waktu presensinya (tepat / terlalu cepat / terlambat). Jika dimatikan, semuanya tidak tampil ke siswa. Nilai tetap tampil untuk wali kelas di rekap.</p>
+            <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa melihat kartu &quot;Nilai presensi bulan ini&quot; dan keterangan waktu presensinya (tepat / terlalu cepat / terlambat), dan wali kelas melihat kolom Nilai &amp; Pred. di rekap. Jika dimatikan, semuanya tidak tampil ke siswa maupun wali kelas. Perubahan langsung berlaku saat siswa atau wali kelas membuka atau memuat ulang halamannya.</p>
           </div>
           <label class="relative inline-flex items-center cursor-pointer flex-none">
             <input type="checkbox" id="toggleNilaiTampil" onchange="updateNilaiTampil()" class="sr-only peer">
@@ -2335,8 +2367,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       recoverStuckSubmit(ev && ev.message);
     });
 
-    function fetchPresensiConfig(onRetry) {
-      if (presensiConfig && (Date.now() - presensiConfigAt) < PRESENSI_CONFIG_TTL_MS) {
+    function fetchPresensiConfig(onRetry, force) {
+      if (!force && presensiConfig && (Date.now() - presensiConfigAt) < PRESENSI_CONFIG_TTL_MS) {
         return Promise.resolve(presensiConfig);
       }
       return runServer('getPresensiConfig', [], { retries: 3, onRetry: onRetry }).then(cfg => {
@@ -3306,9 +3338,30 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       document.getElementById('studentNameDisplay').value = user.nama;
       document.getElementById('studentNisnDisplay').value = user.nisn;
       checkStudentStatusToday(user.nisn);
-      fetchPresensiConfig().then(applyFiturPresensi).catch(() => {});
-      loadStudentNilai();
+      syncStudentNilai(true);
     }
+
+    /* Saklar "Tampilkan Nilai Presensi" dibaca langsung dari server (lewati cache perangkat) SEBELUM kartu nilai
+       diminta. Mati -> kartu tetap tersembunyi; hidup -> kartu dimuat. Dipanggil saat login/buka halaman dan
+       saat tab kembali aktif, sehingga perubahan admin langsung terlihat. */
+    function syncStudentNilai(withFitur) {
+      window._nilaiSyncAt = Date.now();
+      const card = document.getElementById('studentNilaiCard');
+      fetchPresensiConfig(null, true).then(cfg => {
+        if (withFitur) applyFiturPresensi(cfg);
+        if (cfg && cfg.nilai && cfg.nilai.tampil === true) loadStudentNilai();
+        else if (card) card.classList.add('hidden');
+      }).catch(() => {
+        if (withFitur) { try { applyFiturPresensi(); } catch (e) {} }
+        loadStudentNilai();   // gagal membaca saklar: server tetap hanya mengirim nilai bila saklar aktif
+      });
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (typeof currentUser === 'undefined' || !currentUser || currentUser.role !== 'Siswa') return;
+      if (Date.now() - (window._nilaiSyncAt || 0) < 20000) return;
+      syncStudentNilai(false);
+    });
 
 
     /* Kartu nilai presensi siswa: server hanya mengirim data bila saklar admin "Tampilkan Nilai ke Siswa" aktif */
@@ -3319,15 +3372,34 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       runServer('getMyNilaiPresensi', [], { retries: 1 }).then(renderStudentNilai, () => {});
     }
     function renderStudentNilai(res) {
-      const card = document.getElementById('studentNilaiCard'), body = document.getElementById('studentNilaiBody');
+      const card = document.getElementById('studentNilaiCard'), body = document.getElementById('studentNilaiBody'), bln = document.getElementById('studentNilaiBulan');
       if (!card || !body) return;
       if (!res || res.tampil !== true) { card.classList.add('hidden'); return; }
+      card.className = 'nilai-card';
+      if (bln) {
+        const NB = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+        const m = /^(\d{4})-(\d{2})/.exec(res.bulan || '');
+        bln.textContent = m ? NB[parseInt(m[2], 10) - 1] + ' ' + m[1] : '';
+      }
       if (res.nilai === null || res.nilai === undefined) {
-        body.innerHTML = '<p class="text-sm text-slate-500">Belum ada data penilaian bulan ini.</p>';
+        body.innerHTML = '<p class="nilai-kosong">Belum ada data penilaian bulan ini.</p>';
       } else {
-        body.innerHTML = '<div class="flex items-baseline space-x-3"><span class="text-4xl font-extrabold text-slate-800">' + escH_(res.nilai) + '</span><span class="text-lg font-bold text-primary-700">Predikat ' + escH_(res.pred) + '</span></div>' +
-          '<p class="text-xs text-slate-500 mt-2">Dari ' + res.hari + ' hari kegiatan · Hadir ' + res.h + ' · Terlambat ' + res.t + ' · Izin ' + res.i + ' · Sakit ' + res.s + ' · Alpa ' + (res.a + res.ao) + '</p>' +
-          '<p class="text-xs text-slate-400 mt-1">Nilai sementara bulan ini, diperbarui berkala. PKL dan PJJ tidak dihitung.</p>';
+        const pred = ['A', 'B', 'C', 'D'].indexOf(res.pred) >= 0 ? res.pred : 'D';
+        card.classList.add('p-' + pred);
+        const pct = Math.max(0, Math.min(100, Number(res.nilai) || 0));
+        const stat = (cls, n, label) => '<div class="nilai-stat s-' + cls + (n ? '' : ' s-zero') + '"><b>' + n + '</b><span>' + label + '</span></div>';
+        body.innerHTML =
+          '<div class="nilai-main">' +
+            '<span class="nilai-num">' + escH_(res.nilai) + '</span>' +
+            '<div class="nilai-pred"><span class="nilai-pred-label">Predikat</span><span class="nilai-pred-huruf">' + escH_(pred) + '</span></div>' +
+          '</div>' +
+          '<div class="nilai-bar"><i id="studentNilaiFill"></i></div>' +
+          '<div class="nilai-stats">' +
+            stat('h', res.h, 'Hadir') + stat('t', res.t, 'Terlambat') + stat('i', res.i, 'Izin') + stat('s', res.s, 'Sakit') + stat('a', res.a + res.ao, 'Alpa') +
+          '</div>' +
+          '<p class="nilai-note">Nilai sementara, diperbarui berkala.</p>';
+        const fill = document.getElementById('studentNilaiFill');
+        if (fill) requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = pct + '%'; }));
       }
       card.classList.remove('hidden');
     }
@@ -4854,9 +4926,25 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       }).getWaliMonthlyReport(currentUser.kelas, currentUser.jurusan, searchMonth);
     }
 
+    /* Wali kelas: kolom Nilai/Pred. mengikuti saklar terbaru dari server, juga untuk rekap yang diambil dari cache perangkat. */
+    function syncNilaiWali_(reload) {
+      const force = Date.now() - (window._nilaiWaliAt || 0) > 15000;
+      window._nilaiWaliAt = Date.now();
+      fetchPresensiConfig(null, force).then(cfg => {
+        const on = !!(cfg && cfg.nilai && cfg.nilai.tampil === true);
+        const was = !document.body.classList.contains('nilai-off');
+        document.body.classList.toggle('nilai-off', !on);
+        if (on !== was && typeof reload === 'function') {
+          appCache.monthlyReportData = null; appCache.matrixReportData = null;
+          reload();
+        }
+      }).catch(() => {});
+    }
+
     function renderWaliMonthlyReport(res) {
       applyPjjVisibility(res && res.pjjAktif === true);
       document.body.classList.toggle('nilai-off', !(res && res.nilaiTampil === true));
+      syncNilaiWali_(loadWaliMonthlyReport);
       const tbody = document.getElementById('waliReportTableBody');
       tbody.innerHTML = '';
       res.records.forEach((r, index) => {
@@ -4966,6 +5054,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     function renderWaliMatrixReport(res) {
       applyPjjVisibility(res && res.pjjAktif === true);
       document.body.classList.toggle('nilai-off', !(res && res.nilaiTampil === true));
+      syncNilaiWali_(loadWaliMatrixReport);
       const thead = document.getElementById('matrixTableHead');
       const tbody = document.getElementById('matrixTableBody');
       thead.innerHTML = '';
