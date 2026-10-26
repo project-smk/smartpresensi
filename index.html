@@ -852,19 +852,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       <div class="bg-white rounded-2xl shadow-sm border p-6 space-y-6">
         <div class="border-b pb-4">
           <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-satellite-dish text-primary-600 mr-2"></i>Pengaturan Titik Pusat Sekolah, Radius & Proteksi GPS</h2>
-          <p class="text-xs text-slate-500 mt-1">Tentukan titik koordinat lokasi pusat sekolah, batas jarak radius toleransi, dan aktifkan sakelar proteksi Fake GPS.</p>
-        </div>
-
-        <!-- SAKELAR INTEGRASI DETEKSI FAKE GPS -->
-        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border mb-4">
-          <div>
-            <h4 class="text-sm font-bold text-slate-800">Aktifkan Proteksi Deteksi Fake GPS</h4>
-            <p class="text-xs text-slate-500 mt-0.5">Jika aktif, sistem akan mendeteksi dan memblokir siswa yang menggunakan aplikasi pemalsu lokasi / Mock Location.</p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer">
-            <input type="checkbox" id="toggleEnableFakeGpsCheck" onchange="updateFakeGpsSettings()" class="sr-only peer">
-            <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-          </label>
+          <p class="text-xs text-slate-500 mt-1">Tentukan titik koordinat lokasi pusat sekolah, batas jarak radius toleransi, dan proteksi Fake GPS (selalu aktif).</p>
         </div>
 
         <!-- SAKELAR LOKASI SISWA DI TAB KETERANGAN (PKL / Izin / Sakit / PJJ) -->
@@ -1040,17 +1028,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         </div>
         <div class="space-y-4">
           <div><h3 class="text-sm font-bold text-slate-800">Langkah Presensi Mandiri Siswa</h3>
-          <p class="text-xs text-slate-500 mt-0.5">Langkah yang dimatikan tidak akan muncul di laman presensi siswa.</p></div>
-          <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
-            <div>
-              <h4 class="text-sm font-bold text-slate-800">Foto Selfie</h4>
-              <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa wajib mengambil foto selfie sebelum mengirim presensi.</p>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" id="toggleFiturSelfie" onchange="updateFiturPresensi()" class="sr-only peer">
-              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-            </label>
-          </div>
+          <p class="text-xs text-slate-500 mt-0.5">Foto selfie dan verifikasi GPS (termasuk deteksi Fake GPS) selalu wajib. Hanya Scan Barcode yang bisa diaktifkan atau dimatikan.</p></div>
           <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
             <div>
               <h4 class="text-sm font-bold text-slate-800">Scan Barcode</h4>
@@ -1061,17 +1039,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
               <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
             </label>
           </div>
-          <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
-            <div>
-              <h4 class="text-sm font-bold text-slate-800">Verifikasi GPS</h4>
-              <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa wajib cek lokasi GPS dan berada dalam radius sekolah.</p>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" id="toggleFiturGps" onchange="updateFiturPresensi()" class="sr-only peer">
-              <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
-            </label>
-          </div>
-        </div>
+                  </div>
         <div class="border-t pt-4"><h3 class="text-sm font-bold text-slate-800">Status PJJ (Pembelajaran Jarak Jauh)</h3></div>
         <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
           <div class="pr-4">
@@ -3040,7 +3008,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     function loadBarcodeSteps() {
       runServer('getPresensiConfig', [], { retries: 2 }).then(cfg => {
         if (!cfg) return;
-        const f = { selfie: cfg.aktifSelfie !== false, barcode: cfg.aktifBarcode === true, gps: cfg.aktifGps !== false };
+        const f = { selfie: true, barcode: cfg.aktifBarcode === true, gps: true };
         const steps = [['fa-list-check', 'Pilih status kehadiran']];
         if (f.selfie) steps.push(['fa-camera', 'Foto selfie']);
         if (f.barcode) steps.push(['fa-qrcode', 'Scan barcode ini']);
@@ -3155,7 +3123,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     function fitur() {
       if (isStatusBukti()) return { selfie: true, barcode: false, gps: true, keterangan: true };   // PKL/Izin/Sakit/PJJ: tidak terikat panel admin; cek GPS (lokasi terbaca, tanpa radius) selalu wajib
       const c = presensiConfig || {};
-      return { selfie: c.aktifSelfie !== false, barcode: c.aktifBarcode === true, gps: c.aktifGps !== false };
+      return { selfie: true, barcode: c.aktifBarcode === true, gps: true };
     }
     function applyFiturPresensi(cfg) {
       const f = fitur();
@@ -3515,13 +3483,13 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           fail("Gagal Absen! Barcode wajib discan terlebih dahulu.");
           return;
         }
-        if ((statusBukti || cfg.aktifSelfie !== false) && !capturedSelfieBase64) {
+        if (!capturedSelfieBase64) {
           fail("Gagal Absen! Foto selfie wajib diambil terlebih dahulu.");
           return;
         }
 
         // 2. Sakelar Fake GPS & 3. Lokasi + radius sekolah
-        const isFakeGpsCheckEnabled = (cfg.aktifkanDeteksiFakeGps !== undefined) ? cfg.aktifkanDeteksiFakeGps : true;
+        const isFakeGpsCheckEnabled = true;   // Revisi 101: deteksi Fake GPS selalu aktif
         const schoolLat = parseFloat(cfg.lat);
         const schoolLon = parseFloat(cfg.lng);
         const maxRadiusMeters = parseFloat(cfg.radius);
@@ -3538,8 +3506,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
               // Sinyal GPS lemah / habis waktu: coba sekali lagi dengan mode hemat (jaringan/WiFi) sebelum menyerah.
               navigator.geolocation.getCurrentPosition(ok, ko, { enableHighAccuracy: false, timeout: 15000, maximumAge: 0 });
             }, opt);
-          } else if (cfg.aktifGps === false) ok(noPos);
-          else navigator.geolocation.getCurrentPosition(ok, ko, opt);
+          } else navigator.geolocation.getCurrentPosition(ok, ko, opt);
         };
         getPos(function(position) {
          try {
@@ -3548,7 +3515,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           const accuracy = position.coords.accuracy;
 
           // === DETEKSI FAKE GPS / MOCK LOCATION (EKSKLUSIF JIKA SAKELAR ADMIN ON) ===
-          if (isFakeGpsCheckEnabled && userLat !== null && (statusBukti || cfg.aktifGps !== false)) {
+          if (isFakeGpsCheckEnabled && userLat !== null) {
             // A. Cek flag Mock Location (perangkat Android/browser tertentu)
             if (position.coords.isMock || (position.isMock === true)) {
               fail("Gagal Absen! Terdeteksi penggunaan aplikasi Fake GPS / Mock Location.");
@@ -3565,7 +3532,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           // C. Cek Jarak Radius Sekolah
           const distance = calculateDistance(userLat, userLon, schoolLat, schoolLon);
 
-          if (!statusBukti && cfg.aktifGps !== false && distance > maxRadiusMeters) {
+          if (!statusBukti && distance > maxRadiusMeters) {
             fail(`Gagal Absen! Jarak Anda (${Math.round(distance)} meter) berada di luar radius ${maxRadiusMeters} meter dari sekolah.`);
             return;
           }
@@ -3585,7 +3552,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
             status: status,
             userLat: userLat,
             userLon: userLon,
-            selfieBase64: (!statusBukti && cfg.aktifSelfie === false) ? null : capturedSelfieBase64,
+            selfieBase64: capturedSelfieBase64,
             keterangan: statusBukti ? ketVal : '',
             barcodeTicket: statusBukti ? null : capturedBarcodeTicket
           };
@@ -3689,31 +3656,12 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
 
       if (isSetting) {
         loadAdminGpsConfig();
-        loadFakeGpsSettings();
         loadLokasiKeteranganSetting();
         loadFotoFolderSettings();
         loadBackupSettings();
       } else if (isVerifikasi) loadVerifikasiSettings();
       else if (isUsers) loadAdminUsers();
       else if (isTampilan) loadThemeSettingsAdmin();
-    }
-
-    function loadFakeGpsSettings() {
-      showStatusBar('Memuat pengaturan proteksi Fake GPS...', 30);
-      gsr().withSuccessHandler(settings => {
-        hideStatusBar();
-        document.getElementById('toggleEnableFakeGpsCheck').checked = settings.aktifkanDeteksiFakeGps;
-      }).getFakeGpsSettings();
-    }
-
-    function updateFakeGpsSettings() {
-      const aktif = document.getElementById('toggleEnableFakeGpsCheck').checked;
-
-      showStatusBar('Menyimpan pengaturan Fake GPS...', 40);
-      gsr().withSuccessHandler(res => {
-        hideStatusBar();
-        if (!res.success) alert('Gagal menyimpan: ' + res.message);
-      }).saveFakeGpsSettings({ aktifkanDeteksiFakeGps: aktif });
     }
 
     function loadLokasiKeteranganSetting() {
@@ -3974,10 +3922,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           document.getElementById('toggleVerifSekretaris').checked = settings.wajibVerifSekretaris;
           document.getElementById('toggleSekBukti').checked = settings.sekretarisVerifBukti === true;
         }),
-        adminLoadSetting_('fitur', 'getFiturPresensi', ['toggleFiturSelfie', 'toggleFiturBarcode', 'toggleFiturGps'], f => {
-          document.getElementById('toggleFiturSelfie').checked = f.aktifSelfie;
+        adminLoadSetting_('fitur', 'getFiturPresensi', ['toggleFiturBarcode'], f => {
           document.getElementById('toggleFiturBarcode').checked = f.aktifBarcode;
-          document.getElementById('toggleFiturGps').checked = f.aktifGps;
         }),
         loadPjjSetting(),
         loadNilaiSetting()
@@ -4097,15 +4043,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     }
 
     async function updateFiturPresensi() {
-      const f = {
-        aktifSelfie: document.getElementById('toggleFiturSelfie').checked,
-        aktifBarcode: document.getElementById('toggleFiturBarcode').checked,
-        aktifGps: document.getElementById('toggleFiturGps').checked
-      };
-      if (!f.aktifSelfie && !f.aktifBarcode && !f.aktifGps && !(await askConfirm('Semua langkah verifikasi dimatikan. Siswa bisa presensi tanpa selfie, barcode, dan GPS. Lanjutkan?'))) {
-        loadVerifikasiSettings();
-        return;
-      }
+      const f = { aktifBarcode: document.getElementById('toggleFiturBarcode').checked };
       showStatusBar('Menyimpan pengaturan langkah presensi...', 40);
       gsr().withSuccessHandler(res => {
         hideStatusBar();
