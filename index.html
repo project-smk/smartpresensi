@@ -2529,6 +2529,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       if (user.role === 'Admin') {
         document.getElementById('adminDashboard').classList.remove('hidden');
         switchAdminTab('users');
+        setTimeout(() => loadVerifikasiSettings(true), 600);   // Revisi 105: siapkan data tab Setting & Verifikasi sejak login
         loadAdminUsers();
       } else if (user.role === 'Guru Wali Kelas' || user.role === 'Sekretaris') {
         document.getElementById('waliDashboard').classList.remove('hidden');
@@ -3745,6 +3746,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       document.getElementById('adminTabTampilanBtn').className = isTampilan ? activeClass : inactiveClass;
 
       if (isSetting) {
+        loadVerifikasiSettings(true);   // Revisi 105: bagian Penilaian Presensi ada di tab Setting, ikut dimuat di sini
         loadAdminGpsConfig();
         loadLokasiKeteranganSetting();
         loadHariSekolahSetting();
@@ -4091,9 +4093,9 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         if (b) b.classList.toggle('hidden', !Object.keys(_adminLoadFailed).some(k => _adminLoadFailed[k]));
       });
     }
-    function loadVerifikasiSettings() {
+    function loadVerifikasiSettings(silent) {
       // Revisi 105: satu panggilan ke server untuk semua pengaturan (sebelumnya 4 panggilan terpisah)
-      showStatusBar('Memuat pengaturan...', 30);
+      if (silent !== true) showStatusBar('Memuat pengaturan...', 30);
       const ids = ['toggleVerifMandiri', 'toggleVerifSekretaris', 'toggleSekBukti', 'toggleFiturBarcode', 'togglePjj', 'togglePjjVerif', 'toggleNilaiTampil', 'nilJamMasuk'].concat(Object.keys(NIL_FIELDS));
       adminLoadSetting_('bundle', 'getAdminSettingsBundle', ids, b => {
         const v = b.verif || {}, f = b.fitur || {}, pj = b.pjj || {}, n = b.nilai || {};
@@ -4104,7 +4106,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         const el = document.getElementById('togglePjj'); if (el) el.checked = !!pj.aktif;
         const ev = document.getElementById('togglePjjVerif'); if (ev) ev.checked = !(pj.wajibVerif === false);
         applyNilaiSetting_(n);
-      }).then(() => hideStatusBar(), () => hideStatusBar());
+      }).then(() => { if (silent !== true) hideStatusBar(); }, () => { if (silent !== true) hideStatusBar(); });
     }
 
     /* ===== SAKLAR STATUS PJJ (admin) ===== */
