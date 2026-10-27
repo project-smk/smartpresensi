@@ -4092,20 +4092,19 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       });
     }
     function loadVerifikasiSettings() {
-      showStatusBar('Memuat pengaturan verifikasi...', 30);
-      const ps = [
-        adminLoadSetting_('verif', 'getVerifikasiSettings', ['toggleVerifMandiri', 'toggleVerifSekretaris', 'toggleSekBukti'], settings => {
-          document.getElementById('toggleVerifMandiri').checked = settings.wajibVerifMandiri;
-          document.getElementById('toggleVerifSekretaris').checked = settings.wajibVerifSekretaris;
-          document.getElementById('toggleSekBukti').checked = settings.sekretarisVerifBukti === true;
-        }),
-        adminLoadSetting_('fitur', 'getFiturPresensi', ['toggleFiturBarcode'], f => {
-          document.getElementById('toggleFiturBarcode').checked = f.aktifBarcode;
-        }),
-        loadPjjSetting(),
-        loadNilaiSetting()
-      ];
-      Promise.all(ps).then(() => hideStatusBar(), () => hideStatusBar());
+      // Revisi 105: satu panggilan ke server untuk semua pengaturan (sebelumnya 4 panggilan terpisah)
+      showStatusBar('Memuat pengaturan...', 30);
+      const ids = ['toggleVerifMandiri', 'toggleVerifSekretaris', 'toggleSekBukti', 'toggleFiturBarcode', 'togglePjj', 'togglePjjVerif', 'toggleNilaiTampil', 'nilJamMasuk'].concat(Object.keys(NIL_FIELDS));
+      adminLoadSetting_('bundle', 'getAdminSettingsBundle', ids, b => {
+        const v = b.verif || {}, f = b.fitur || {}, pj = b.pjj || {}, n = b.nilai || {};
+        document.getElementById('toggleVerifMandiri').checked = v.wajibVerifMandiri;
+        document.getElementById('toggleVerifSekretaris').checked = v.wajibVerifSekretaris;
+        document.getElementById('toggleSekBukti').checked = v.sekretarisVerifBukti === true;
+        document.getElementById('toggleFiturBarcode').checked = !!f.aktifBarcode;
+        const el = document.getElementById('togglePjj'); if (el) el.checked = !!pj.aktif;
+        const ev = document.getElementById('togglePjjVerif'); if (ev) ev.checked = !(pj.wajibVerif === false);
+        applyNilaiSetting_(n);
+      }).then(() => hideStatusBar(), () => hideStatusBar());
     }
 
     /* ===== SAKLAR STATUS PJJ (admin) ===== */
@@ -4177,11 +4176,12 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     /* ===== PENILAIAN PRESENSI (admin) ===== */
     const NIL_FIELDS = { nilToleransi: 'toleransi', nilPoinHadir: 'poinHadir', nilPoinTerlambat: 'poinTerlambat', nilPoinSakit: 'poinSakit', nilPoinIzin: 'poinIzin', nilPoinAlpa: 'poinAlpa', nilBatasA: 'batasA', nilBatasB: 'batasB', nilBatasC: 'batasC' };
     function loadNilaiSetting() {
-      return adminLoadSetting_('nilai', 'getNilaiSetting', ['toggleNilaiTampil', 'nilJamMasuk'].concat(Object.keys(NIL_FIELDS)), r => {
-        const t = document.getElementById('toggleNilaiTampil'); if (t) t.checked = !!r.tampil;
-        const j = document.getElementById('nilJamMasuk'); if (j) j.value = r.jamMasuk || '07:00';
-        Object.keys(NIL_FIELDS).forEach(id => { const e = document.getElementById(id); if (e) e.value = r[NIL_FIELDS[id]]; });
-      });
+      return adminLoadSetting_('nilai', 'getNilaiSetting', ['toggleNilaiTampil', 'nilJamMasuk'].concat(Object.keys(NIL_FIELDS)), applyNilaiSetting_);
+    }
+    function applyNilaiSetting_(r) {
+      const t = document.getElementById('toggleNilaiTampil'); if (t) t.checked = !!r.tampil;
+      const j = document.getElementById('nilJamMasuk'); if (j) j.value = r.jamMasuk || '07:00';
+      Object.keys(NIL_FIELDS).forEach(id => { const e = document.getElementById(id); if (e) e.value = r[NIL_FIELDS[id]]; });
     }
     function updateNilaiTampil() {
       const tampil = document.getElementById('toggleNilaiTampil').checked;
