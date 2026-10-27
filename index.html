@@ -1269,7 +1269,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         </div>
         <div class="pt-2">
           <button onclick="executeClearAttendanceLogsByRange()" class="bg-rose-600 hover:bg-rose-700 text-white px-5 py-3 rounded-xl text-xs font-bold transition shadow-md flex items-center justify-center space-x-2 w-full">
-            <i class="fas fa-trash-alt text-sm"><span>Hapus Log Presensi Berdasarkan Rentang Tanggal</span></i>
+            <i class="fas fa-trash-alt text-sm"></i><span>Hapus Log &amp; Foto Berdasarkan Rentang Tanggal</span>
           </button>
         </div>
 
@@ -4287,7 +4287,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const startDate = document.getElementById('clearStartDate').value;
       const endDate = document.getElementById('clearEndDate').value;
       if (!startDate || !endDate) return alert("Gagal! Admin wajib memasukkan rentang tanggal secara lengkap.");
-      if (!(await askConfirm(`Hapus log presensi dari tanggal ${startDate} sampai ${endDate}?`))) return;
+      if (!(await askConfirm(`Hapus log presensi DAN foto bukti (di Google Drive) dari tanggal ${startDate} sampai ${endDate}? Foto dipindah ke Sampah Drive dan masih bisa dipulihkan sekitar 30 hari.`))) return;
 
       showStatusBar('Memproses penghapusan...', 50);
       gsr().withSuccessHandler(res => {
