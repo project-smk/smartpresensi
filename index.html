@@ -192,6 +192,10 @@
     @media (max-width: 480px) { .brand-school-badge { display: none; } }
     .user-chip { display: flex; align-items: center; gap: .5rem; padding: .3rem .3rem; border-radius: 9999px; background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .14); }
     .user-avatar { width: 30px; height: 30px; border-radius: 9999px; display: grid; place-items: center; flex: none; background: var(--secondary-400); color: var(--primary-900); font-weight: 800; font-size: .8rem; }
+    .user-avatar { overflow: hidden; }
+    .user-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .fp-avatar { width: 72px; height: 72px; flex: none; border-radius: 9999px; overflow: hidden; display: grid; place-items: center; background: #e2e8f0; color: #334155; font-size: 28px; font-weight: 800; border: 2px solid #fff; box-shadow: 0 0 0 1px #cbd5e1; }
+    .fp-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .chip-logout { padding: .4rem .7rem; border-radius: 9999px; background: rgb(255 255 255 / .1); color: #fff; font-size: .72rem; font-weight: 700; }
     .chip-logout:hover { background: rgb(255 255 255 / .2); }
 
@@ -664,6 +668,20 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         <p class="text-xs text-slate-500">Pilih status kehadiran, ambil foto selfie Anda, lalu kirim presensi beserta validasi GPS.</p>
       </div>
 
+      <div id="studentFotoCard" class="p-4 rounded-xl border bg-slate-50 flex items-center gap-4">
+        <div id="studentFotoAvatar" class="fp-avatar" role="img" aria-label="Foto profil">-</div>
+        <div class="min-w-0 flex-1">
+          <p class="text-xs font-bold text-slate-700">Foto Profil</p>
+          <p id="studentFotoHint" class="text-[11px] text-slate-500 mt-0.5"></p>
+          <div class="flex flex-wrap gap-2 mt-2">
+            <button type="button" id="btnFotoPilih" onclick="document.getElementById('fotoProfilInput').click()" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow transition"><i class="fas fa-camera mr-1"></i><span>Tambah foto</span></button>
+            <button type="button" id="btnFotoSimpan" onclick="fotoProfilSimpan()" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow transition"><i class="fas fa-check mr-1"></i>Simpan</button>
+            <button type="button" id="btnFotoBatal" onclick="fotoProfilBatal()" class="hidden bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-bold transition">Batal</button>
+          </div>
+        </div>
+        <input type="file" id="fotoProfilInput" accept="image/*" class="hidden" onchange="fotoProfilDipilih(this)">
+      </div>
+
       <div id="studentNilaiCard" class="hidden nilai-card">
         <div class="nilai-head">
           <span class="nilai-title"><i class="fas fa-chart-line"></i>Nilai presensi bulan ini</span>
@@ -993,6 +1011,31 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
               </button>
             </div>
             <p id="folderFotoStatus" class="text-xs text-slate-500"></p>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border p-6 space-y-4">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-id-badge text-primary-600 mr-2"></i>Folder Foto Profil Siswa</h2>
+            <p class="text-xs text-slate-500 mt-1">Folder Google Drive tempat foto profil siswa disimpan (nama file <b>NISN.jpg</b>). Folder ini terpisah dari foto bukti presensi, sehingga tidak ikut terhapus oleh fitur Hapus Log &amp; Foto. Foto ikut dihapus saat siswa dihapus atau ditamatkan, dan nama file ikut berubah saat NISN diedit.</p>
+          </div>
+          <div class="p-4 bg-slate-50 rounded-xl border space-y-3">
+            <label for="inputNamaFolderFotoProfil" class="block text-xs font-semibold text-slate-600">Nama Folder</label>
+            <div class="flex gap-2">
+              <input type="text" id="inputNamaFolderFotoProfil" maxlength="100" placeholder="Foto_Profil_Siswa" class="flex-1 min-w-0 border px-3 py-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500">
+              <button id="btnSimpanFolderFotoProfil" onclick="saveFotoProfilFolderName()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition flex items-center space-x-1.5">
+                <i class="fas fa-save"></i><span>Simpan</span>
+              </button>
+            </div>
+            <p id="folderFotoProfilStatus" class="text-xs text-slate-500"></p>
+          </div>
+          <div class="p-4 bg-slate-50 rounded-xl border space-y-3">
+            <p class="text-xs font-semibold text-slate-600">Bersihkan foto yatim (file di folder yang tidak dipakai siswa mana pun)</p>
+            <div class="flex flex-wrap gap-2">
+              <button id="btnCekFotoProfilYatim" onclick="fpAdminCek()" class="bg-white border hover:bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-xs font-bold transition"><i class="fas fa-magnifying-glass mr-1"></i>Periksa</button>
+              <button id="btnBersihFotoProfilYatim" onclick="fpAdminBersih()" disabled class="bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-xs font-bold shadow transition"><i class="fas fa-trash mr-1"></i>Pindahkan ke Sampah</button>
+            </div>
+            <p id="fotoProfilYatimInfo" class="text-xs text-slate-500">Klik Periksa untuk melihat jumlahnya. Foto dipindah ke Sampah Drive (bisa dipulihkan ±30 hari).</p>
           </div>
         </div>
 
@@ -2574,8 +2617,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       document.getElementById('userInfo').classList.remove('hidden');
       document.getElementById('userNameDisplay').innerText = user.nama;
       document.getElementById('userRoleBadge').innerText = user.role;
-      var avatarEl = document.getElementById('userAvatarInitial');
-      if (avatarEl) avatarEl.innerText = (user.nama || '?').trim().charAt(0).toUpperCase();
+      fpFillAvatar_(document.getElementById('userAvatarInitial'), user.fotoProfil, user.nama, 64);   // Revisi 109: foto profil (siswa), selain itu inisial
 
       if (user.role === 'Admin') {
         document.getElementById('adminDashboard').classList.remove('hidden');
@@ -3444,7 +3486,119 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       try { applyFiturPresensi(); } catch (e) {}
     }
 
+    /* ===== FOTO PROFIL SISWA (Revisi 109) =====
+       Ringan untuk siswa & kuota Apps Script:
+       - Alamat foto ikut dalam data login (tanpa panggilan server tambahan saat membuka laman).
+       - Gambar dimuat langsung dari Google Drive (bukan lewat Apps Script), ukuran kecil, dan di-cache browser.
+       - Foto dikompres di browser (potong persegi, maks. 320 px, JPEG ±20-40 KB) sebelum dikirim; server hanya menyimpan. */
+    let _fpPending = null;
+    function fpDriveId_(u) { const s = String(u || ''); const m = s.match(/\/d\/([-\w]{20,})/) || s.match(/[?&]id=([-\w]{20,})/); return m ? m[1] : ''; }
+    function fpFillAvatar_(el, url, nama, size) {
+      if (!el) return;
+      el.textContent = (nama || '?').trim().charAt(0).toUpperCase();
+      const id = fpDriveId_(url);
+      if (!id) return;
+      const img = new Image();
+      let tried = 0;
+      img.alt = ''; img.decoding = 'async'; img.referrerPolicy = 'no-referrer';
+      img.onload = function () { el.textContent = ''; el.appendChild(img); };
+      img.onerror = function () {
+        if (tried++ === 0) img.src = 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + size;   // cadangan; bila gagal tetap tampil inisial
+      };
+      img.src = 'https://lh3.googleusercontent.com/d/' + id + '=s' + size;
+    }
+    function fpSetHint_(t) { const e = document.getElementById('studentFotoHint'); if (e) e.textContent = t; }
+    function fpButtons_(pending) {
+      const g = id => document.getElementById(id);
+      if (g('btnFotoSimpan')) g('btnFotoSimpan').classList.toggle('hidden', !pending);
+      if (g('btnFotoBatal')) g('btnFotoBatal').classList.toggle('hidden', !pending);
+      if (g('btnFotoPilih')) g('btnFotoPilih').classList.toggle('hidden', !!pending);
+    }
+    function renderStudentFotoCard_(user, msg) {
+      _fpPending = null;
+      fpFillAvatar_(document.getElementById('studentFotoAvatar'), user.fotoProfil, user.nama, 160);
+      const has = !!fpDriveId_(user.fotoProfil);
+      const lbl = document.querySelector('#btnFotoPilih span'); if (lbl) lbl.textContent = has ? 'Ganti foto' : 'Tambah foto';
+      fpSetHint_(msg || (has ? 'Foto profil Anda sudah tersimpan.' : 'Belum ada foto. Tambahkan foto wajah agar mudah dikenali.'));
+      fpButtons_(false);
+    }
+    async function fpLoadBitmap_(file) {
+      if (window.createImageBitmap) { try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) {} }
+      return await new Promise((res, rej) => {
+        const u = URL.createObjectURL(file), i = new Image();
+        i.onload = () => { URL.revokeObjectURL(u); res(i); };
+        i.onerror = () => { URL.revokeObjectURL(u); rej(new Error('gagal membaca gambar')); };
+        i.src = u;
+      });
+    }
+    async function fpCompress_(file) {
+      const bmp = await fpLoadBitmap_(file);
+      const w = bmp.width, h = bmp.height, side = Math.min(w, h);
+      const sx = (w - side) / 2, sy = (h - side) / 2;
+      const TARGET = 45000;   // panjang teks base64 (±34 KB)
+      let result = null, last = null;
+      for (const dim of [320, 256, 200]) {
+        const cv = document.createElement('canvas'); cv.width = cv.height = dim;
+        const ctx = cv.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, dim, dim);
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(bmp, sx, sy, side, side, 0, 0, dim, dim);
+        for (let q = 0.82; q >= 0.44; q -= 0.07) {
+          last = cv.toDataURL('image/jpeg', q);
+          if (last.length <= TARGET) { result = last; break; }
+        }
+        if (result) break;
+      }
+      if (!result) result = last;
+      if (bmp.close) { try { bmp.close(); } catch (e) {} }
+      return { dataUrl: result, bytes: Math.round((result.length - 23) * 3 / 4) };
+    }
+    async function fotoProfilDipilih(inp) {
+      const file = inp.files && inp.files[0];
+      inp.value = '';
+      if (!file) return;
+      if (!/^image\//.test(file.type)) return alert('Pilih file gambar (JPG atau PNG).');
+      if (file.size > 30 * 1024 * 1024) return alert('Foto terlalu besar. Pilih foto lain.');
+      fpSetHint_('Memproses foto...');
+      try {
+        const out = await fpCompress_(file);
+        _fpPending = out;
+        const av = document.getElementById('studentFotoAvatar');
+        av.textContent = '';
+        const im = new Image(); im.alt = ''; im.src = out.dataUrl; av.appendChild(im);
+        fpSetHint_('Pratinjau (ukuran ' + Math.max(1, Math.round(out.bytes / 1024)) + ' KB). Tekan Simpan untuk menyimpan.');
+        fpButtons_(true);
+      } catch (e) {
+        _fpPending = null;
+        fpSetHint_('Foto tidak bisa diproses. Coba foto lain.');
+        fpButtons_(false);
+      }
+    }
+    function fotoProfilBatal() { if (currentUser) renderStudentFotoCard_(currentUser); }
+    function fotoProfilSimpan() {
+      if (!_fpPending || !currentUser) return;
+      const bs = document.getElementById('btnFotoSimpan'), bb = document.getElementById('btnFotoBatal');
+      bs.disabled = true; bb.disabled = true;
+      fpSetHint_('Menyimpan foto...');
+      const done = () => { bs.disabled = false; bb.disabled = false; };
+      gsr().withSuccessHandler(res => {
+        done();
+        if (res && res.success) {
+          currentUser.fotoProfil = res.fotoUrl;
+          saveSession(currentUser);
+          fpFillAvatar_(document.getElementById('userAvatarInitial'), currentUser.fotoProfil, currentUser.nama, 64);
+          renderStudentFotoCard_(currentUser, 'Foto profil berhasil disimpan.');
+        } else {
+          fpSetHint_((res && res.message) || 'Gagal menyimpan foto.');
+        }
+      }).withFailureHandler(err => {
+        done();
+        fpSetHint_('Gagal menyimpan foto: ' + ((err && err.message) || err));
+      }).uploadFotoProfil({ base64: _fpPending.dataUrl });
+    }
+
     function loadStudentDashboardInfo(user) {
+      renderStudentFotoCard_(user);
       resetStudentPresensiState();
       document.getElementById('studentNameDisplay').value = user.nama;
       document.getElementById('studentNisnDisplay').value = user.nisn;
@@ -3802,6 +3956,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         loadLokasiKeteranganSetting();
         loadHariSekolahSetting();
         loadFotoFolderSettings();
+        loadFotoProfilFolderSettings();
         loadBackupSettings();
       } else if (isVerifikasi) loadVerifikasiSettings();
       else if (isUsers) loadAdminUsers();
@@ -4112,6 +4267,91 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         btn.disabled = false;
         alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
       }).saveFotoFolderSettings({ nama: nama });
+    }
+
+    /* ===== FOLDER FOTO PROFIL SISWA - PANEL ADMIN (Revisi 109) ===== */
+    function renderFotoProfilFolderStatus(res) {
+      const el = document.getElementById('folderFotoProfilStatus');
+      el.innerHTML = '';
+      const ic = document.createElement('i');
+      const txt = document.createElement('span');
+      if (res && res.ada) {
+        el.className = 'text-xs text-emerald-700';
+        ic.className = 'fas fa-circle-check mr-1';
+        txt.textContent = 'Folder ditemukan di Google Drive. ';
+        el.appendChild(ic); el.appendChild(txt);
+        if (res.url) {
+          const a = document.createElement('a');
+          a.href = res.url; a.target = '_blank'; a.rel = 'noopener';
+          a.className = 'font-bold underline';
+          a.textContent = 'Buka folder';
+          el.appendChild(a);
+        }
+      } else {
+        el.className = 'text-xs text-amber-700';
+        ic.className = 'fas fa-triangle-exclamation mr-1';
+        txt.textContent = 'Folder belum ada. Akan dibuat otomatis saat siswa pertama mengunggah foto, atau klik Simpan untuk membuatnya sekarang.';
+        el.appendChild(ic); el.appendChild(txt);
+      }
+    }
+    function loadFotoProfilFolderSettings() {
+      gsr().withSuccessHandler(res => {
+        document.getElementById('inputNamaFolderFotoProfil').value = (res && res.nama) || '';
+        renderFotoProfilFolderStatus(res);
+      }).withFailureHandler(() => {
+        const el = document.getElementById('folderFotoProfilStatus');
+        el.className = 'text-xs text-rose-600';
+        el.textContent = 'Gagal memuat info folder foto profil.';
+      }).getFotoProfilFolderSettings();
+    }
+    function saveFotoProfilFolderName() {
+      const nama = document.getElementById('inputNamaFolderFotoProfil').value.trim();
+      if (!nama) return alert('Nama folder tidak boleh kosong!');
+      const btn = document.getElementById('btnSimpanFolderFotoProfil');
+      btn.disabled = true;
+      showStatusBar('Menyimpan pengaturan folder foto profil...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        btn.disabled = false;
+        if (res && res.success) {
+          document.getElementById('inputNamaFolderFotoProfil').value = res.nama;
+          renderFotoProfilFolderStatus(res);
+          alert(res.message);
+        } else {
+          alert('Gagal menyimpan: ' + (res && res.message ? res.message : 'tidak diketahui'));
+          loadFotoProfilFolderSettings();
+        }
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        btn.disabled = false;
+        alert('Gagal menyimpan: ' + (err && err.message ? err.message : err));
+      }).saveFotoProfilFolderSettings({ nama: nama });
+    }
+    function fpAdminInfo_(t, cls) { const e = document.getElementById('fotoProfilYatimInfo'); e.className = 'text-xs ' + (cls || 'text-slate-500'); e.textContent = t; }
+    function fpAdminCek() {
+      const b = document.getElementById('btnCekFotoProfilYatim'), c = document.getElementById('btnBersihFotoProfilYatim');
+      b.disabled = true; c.disabled = true; fpAdminInfo_('Memeriksa folder...');
+      gsr().withSuccessHandler(res => {
+        b.disabled = false;
+        if (!res || !res.success) return fpAdminInfo_((res && res.message) || 'Gagal memeriksa.', 'text-rose-600');
+        fpAdminInfo_(res.message, res.jumlah > 0 ? 'text-amber-700' : 'text-emerald-700');
+        c.disabled = !(res.jumlah > 0);
+      }).withFailureHandler(err => {
+        b.disabled = false;
+        fpAdminInfo_('Gagal memeriksa: ' + ((err && err.message) || err), 'text-rose-600');
+      }).getFotoProfilYatim();
+    }
+    function fpAdminBersih() {
+      if (!confirm('Pindahkan foto profil yatim ke Sampah Drive? Foto yang dipakai siswa tidak tersentuh.')) return;
+      const b = document.getElementById('btnCekFotoProfilYatim'), c = document.getElementById('btnBersihFotoProfilYatim');
+      b.disabled = true; c.disabled = true; fpAdminInfo_('Memindahkan ke Sampah...');
+      gsr().withSuccessHandler(res => {
+        b.disabled = false;
+        fpAdminInfo_((res && res.message) || 'Selesai.', (res && res.success) ? 'text-emerald-700' : 'text-rose-600');
+      }).withFailureHandler(err => {
+        b.disabled = false;
+        fpAdminInfo_('Gagal: ' + ((err && err.message) || err), 'text-rose-600');
+      }).bersihkanFotoProfilYatim();
     }
 
     /* ===== PEMUAT PENGATURAN ADMIN (Revisi 99) =====
