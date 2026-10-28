@@ -219,6 +219,7 @@
     .fp-btn:disabled { opacity: .55; cursor: not-allowed; }
     .fp-btn-main { background: var(--primary-700); color: #fff; box-shadow: 0 6px 14px -8px var(--primary-700); }
     .fp-btn-main:hover { background: var(--primary-800, var(--primary-900)); }
+    #fpActionsPick { grid-template-columns: 1fr; }
     .fp-btn-alt { background: #fff; color: var(--primary-700); border: 1.5px solid var(--primary-600); }
     .fp-btn-alt:hover { background: #f1f5f9; }
     .fp-btn-ok { background: #059669; color: #fff; box-shadow: 0 6px 14px -8px #059669; }
@@ -711,19 +712,17 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         </div>
         <p id="studentFotoHint" class="fp-hint"></p>
         <div id="fpActionsPick" class="fp-actions">
-          <button type="button" id="btnFotoSelfie" onclick="fpWarmup_();document.getElementById('fotoProfilInputSelfie').click()" class="fp-btn fp-btn-main"><i class="fas fa-camera-rotate"></i><span>Ambil selfie</span></button>
-          <button type="button" id="btnFotoGaleri" onclick="fpWarmup_();document.getElementById('fotoProfilInputGaleri').click()" class="fp-btn fp-btn-alt"><i class="fas fa-images"></i><span>Dari galeri</span></button>
+          <button type="button" id="btnFotoSelfie" onclick="fpWarmup_();document.getElementById('fotoProfilInputSelfie').click()" class="fp-btn fp-btn-main"><i class="fas fa-camera-rotate"></i><span>Ambil selfie wajah penuh</span></button>
         </div>
         <div id="fpActionsConfirm" class="fp-actions hidden">
           <button type="button" id="btnFotoSimpan" onclick="fotoProfilSimpan()" class="fp-btn fp-btn-ok"><i class="fas fa-check"></i><span>Simpan foto</span></button>
           <button type="button" id="btnFotoBatal" onclick="fotoProfilBatal()" class="fp-btn fp-btn-no"><i class="fas fa-xmark"></i><span>Batal</span></button>
         </div>
         <input type="file" id="fotoProfilInputSelfie" accept="image/*" capture="user" class="hidden" onchange="fotoProfilDipilih(this)">
-        <input type="file" id="fotoProfilInputGaleri" accept="image/*" class="hidden" onchange="fotoProfilDipilih(this)">
       </div>
 
       <div id="fpGateBanner" class="hidden p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold text-justify" role="alert">
-        <i class="fas fa-lock mr-1"></i> Foto profil wajib diunggah (wajah terlihat jelas) sebelum Anda bisa melakukan presensi. Gunakan kartu foto di atas, lalu tekan Simpan foto.
+        <i class="fas fa-lock mr-1"></i> Foto profil wajib diambil langsung dari kamera dengan wajah tampak penuh sebelum Anda bisa melakukan presensi. Gunakan kartu foto di atas, lalu tekan Simpan foto.
       </div>
 
       <div id="studentNilaiCard" class="hidden nilai-card">
@@ -3658,7 +3657,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       if (g('studentFotoName')) g('studentFotoName').textContent = user.nama || '';
       if (g('studentFotoMeta')) g('studentFotoMeta').textContent = ['NISN ' + (user.nisn || '-'), 'Kelas ' + [user.kelas, user.jurusan].filter(Boolean).join(' ')].join('  ·  ');
       const has = !!fpDriveId_(user.fotoProfil);
-      fpSetHint_(msg || (has ? 'Foto profil tersimpan. Ambil selfie baru atau pilih dari galeri untuk menggantinya.' : (fpWajib_(user) ? 'Belum ada foto profil. WAJIB diunggah sebelum presensi: ambil selfie atau pilih foto dari galeri.' : 'Belum ada foto profil. Ambil selfie atau pilih foto dari galeri.')));
+      fpSetHint_(msg || (has ? 'Foto profil tersimpan. Untuk menggantinya, ambil selfie baru langsung dari kamera. Pastikan wajah tampak penuh.' : (fpWajib_(user) ? 'Belum ada foto profil. WAJIB diambil sebelum presensi: ambil selfie langsung dari kamera dan pastikan wajah tampak penuh.' : 'Belum ada foto profil. Ambil selfie langsung dari kamera dan pastikan wajah tampak penuh.')));
       fpButtons_(false);
       fpApplyGate_(user);   // Revisi 111
     }
@@ -3684,12 +3683,15 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
        FP_SCORE_MIN  : skor keyakinan minimal agar wajah dihitung (0.6 -> 0.5).
        FP_DETECT_CONF: sensitivitas pemeriksa (0.5 -> 0.4; makin kecil makin peka, makin besar peluang objek mirip wajah lolos).
        FP_FACE_RETRY : percobaan memuat ulang otomatis bila pemeriksa gagal dimuat (0 = tanpa ulang). */
+    const FP_EDGE_MARGIN = 0.005;   // Revisi 114: wajah yang menyentuh tepi foto (lebih dekat dari bagian ini terhadap sisi pendek) dianggap terpotong; 0 = tanpa cek
     const FP_MIN_RATIO = 0.08, FP_OTHER_MAX = 0.8, FP_SCORE_MIN = 0.5, FP_DETECT_CONF = 0.4, FP_FACE_RETRY = 1;
     const FP_MP_VER = '0.10.14';
     const FP_FACE_MSG = {
-      NOFACE: 'Wajah tidak terdeteksi. Gunakan foto wajah Anda sendiri: menghadap kamera, tanpa tertutup, dan cahaya cukup.',
-      MANY: 'Terdeteksi lebih dari satu wajah. Gunakan foto yang hanya berisi wajah Anda.',
-      SMALL: 'Wajah terlalu kecil atau jauh. Dekatkan kamera ke wajah Anda.',
+      NOFACE: 'Wajah tidak terdeteksi. Pastikan wajah tampak penuh: menghadap lurus ke kamera, tidak tertutup (masker, topi, tangan), dan cahaya cukup.',
+      MANY: 'Terdeteksi lebih dari satu wajah. Pastikan hanya wajah Anda yang tampak penuh di dalam foto.',
+      SMALL: 'Wajah terlalu kecil atau jauh. Dekatkan kamera sampai wajah tampak penuh di layar.',
+      CUT: 'Wajah belum tampak penuh (terpotong di tepi foto). Pastikan seluruh wajah dari dahi sampai dagu berada di dalam bingkai, lalu potret ulang.',
+      GALLERY: 'Foto profil harus diambil langsung dari kamera saat ini, bukan dari galeri. Silakan potret ulang.',
       LOAD: 'Pemeriksa wajah belum bisa dimuat. Pastikan internet aktif, lalu coba lagi.'
     };
     let _fpDetP = null, _fpDetReady = false, _fpBusy = false;
@@ -3734,6 +3736,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       if (!faces.length) throw fpErr_('NOFACE');
       const f = faces[0], shortSide = Math.min(w, h), fs = Math.max(f.w, f.h);
       if (fs < shortSide * FP_MIN_RATIO) throw fpErr_('SMALL');
+      const em = shortSide * FP_EDGE_MARGIN;
+      if (FP_EDGE_MARGIN > 0 && (f.x <= em || f.y <= em || f.x + f.w >= w - em || f.y + f.h >= h - em)) throw fpErr_('CUT');   // Revisi 114: wajah harus tampak penuh
       if (faces.slice(1).some(o => o.score >= 0.7 && o.w * o.h >= f.w * f.h * FP_OTHER_MAX)) throw fpErr_('MANY');
       const side = Math.min(shortSide, fs * 2.6);
       const cx = f.x + f.w / 2, cy = f.y + f.h / 2;
@@ -3777,8 +3781,10 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const file = inp.files && inp.files[0];
       inp.value = '';
       if (!file || _fpBusy) return;
-      if (!/^image\//.test(file.type)) return alert('Pilih file gambar (JPG atau PNG).');
-      if (file.size > 30 * 1024 * 1024) return alert('Foto terlalu besar. Pilih foto lain.');
+      if (!/^image\//.test(file.type)) return alert('File bukan foto. Silakan gunakan tombol kamera untuk memotret ulang.');
+      if (file.size > 30 * 1024 * 1024) return alert('Foto terlalu besar. Silakan potret ulang.');
+      // Revisi 114: foto lama (dari galeri) ditolak; foto profil harus baru diambil dari kamera (maks. 2 menit).
+      if (file.lastModified && (Date.now() - file.lastModified) > 2 * 60 * 1000) return alert(FP_FACE_MSG.GALLERY);
       _fpBusy = true;
       fpSetHint_(FP_FACE_MODE !== 'mati' && !_fpDetReady ? 'Menyiapkan pemeriksa wajah (pertama kali, butuh internet beberapa detik)...' : 'Memeriksa foto...');
       try {
@@ -3791,8 +3797,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         fpButtons_(true);
       } catch (e) {
         _fpPending = null;
-        if (currentUser) renderStudentFotoCard_(currentUser, (e && e.code) ? e.message : 'Foto tidak bisa diproses. Coba foto lain.');
-        else { fpSetHint_('Foto tidak bisa diproses. Coba foto lain.'); fpButtons_(false); }
+        if (currentUser) renderStudentFotoCard_(currentUser, (e && e.code) ? e.message : 'Foto tidak bisa diproses. Silakan potret ulang.');
+        else { fpSetHint_('Foto tidak bisa diproses. Silakan potret ulang.'); fpButtons_(false); }
       } finally {
         _fpBusy = false;
       }
