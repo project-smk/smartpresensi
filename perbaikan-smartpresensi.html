@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05080D">
+<meta name="robots" content="noindex">
+<title>Smart Presensi sedang diperbaiki | Portal SMK Nusantara</title>
+<link rel="icon" type="image/png" href="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiiqlE-zYGrIu6DveVhY3WdPQFZRtdWBx35gGyI88TQnLzTX5SbI78EVTFbPbTHfvc4BVs79cnjvFariowndXyiK3zPBtNUKL1k3sgJW_xbYRWFscNdoQTprJf6yF6CgKoXERgRyzZiOEXHcHO-bcKmXpHjFVbDTJyPOXzOXgo3555vYH6hA_eNuwUVUSUC/w128-h128-p-k-no-nu/Logo%20SMK%20Nusantara%20Lubuk%20Pakam.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--c:#0E9F8B;--on:#05080D}
+:root{--bg:#05080D;--surface:#0A1119;--ink:#E6F1FA;--muted:#8CA0B3;--line:rgba(120,200,255,.16);--soft:rgba(120,200,255,.06);
+  --ct:color-mix(in srgb,var(--c) 55%,#fff);--mono:ui-monospace,'SF Mono','Cascadia Mono',Menlo,Consolas,monospace;
+  font-family:'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color-scheme:dark}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{min-height:100vh;min-height:100dvh;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+button,a{font:inherit;color:inherit;-webkit-tap-highlight-color:transparent}
+button{cursor:pointer;border:0;background:none}
+a{text-decoration:none}
+ul,ol{list-style:none}
+:focus-visible{outline:2px solid var(--ct);outline-offset:2px}
+svg{display:block}
+
+/* ---------- komponen bersama ---------- */
+.logo{position:relative;flex:none;width:52px;height:52px;border-radius:10px;background:var(--c);color:var(--on,#fff);display:grid;place-items:center;overflow:hidden;
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--c) 70%,transparent),0 0 20px color-mix(in srgb,var(--c) 38%,transparent)}
+.logo .fb svg{width:28px;height:28px}
+.logo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:4px;background:#fff}
+.logo.sm{width:38px;height:38px;border-radius:8px}.logo.sm .fb svg{width:22px;height:22px}
+.logo.school{background:#fff;box-shadow:0 0 0 1px var(--line)}.logo.school .fb{display:none}
+.app-id{display:flex;align-items:center;gap:12px}
+.app-id b{font-size:15px;font-weight:700}
+.d-chip{display:inline-flex;align-items:center;gap:8px;padding:7px 13px;border:1px solid color-mix(in srgb,var(--c) 50%,transparent);border-radius:999px;background:rgba(5,8,13,.7);font-size:12px;font-weight:600;color:var(--ct)}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--c);box-shadow:0 0 0 0 color-mix(in srgb,var(--c) 70%,transparent);animation:pulse 2s ease-out infinite}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;height:46px;padding:0 20px;border-radius:10px;font-size:14px;font-weight:700;border:1px solid transparent;transition:border-color .15s,background .15s,transform .1s}
+.btn svg{width:18px;height:18px;flex:none}
+.btn[hidden]{display:none}
+.btn.pri{background:var(--c);color:var(--on,#fff);border-color:color-mix(in srgb,var(--c) 60%,#fff)}
+.btn.pri:active,.btn.sec:active{transform:scale(.98)}
+.btn.sec{border-color:var(--line);background:var(--soft);color:var(--ink)}
+@media (hover:hover){.btn.sec:hover{border-color:var(--ct)}.btn.pri:hover{filter:brightness(1.1)}}
+.steps{display:flex;flex-direction:column}
+.st{position:relative;display:flex;gap:14px;padding-bottom:16px}
+.st:last-child{padding-bottom:0}
+.st:not(:last-child)::before{content:"";position:absolute;left:11px;top:26px;bottom:2px;width:2px;background:var(--line)}
+.st.done::before{background:var(--c)}
+.dot{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;border:2px solid var(--line);background:var(--bg)}
+.st.done .dot{background:var(--c);border-color:var(--c);color:var(--on,#fff)}
+.st.done .dot svg{width:13px;height:13px}
+.st.now .dot{border-color:color-mix(in srgb,var(--c) 30%,transparent);border-top-color:var(--c);animation:rot .9s linear infinite}
+.tx b{display:block;font-size:14.5px;font-weight:600;line-height:1.4}
+.tx small{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.st.now .tx small{color:var(--ct)}
+.st.next .tx b{color:var(--muted);font-weight:500}
+.tips ul{display:flex;flex-direction:column;gap:9px}
+.tips li{position:relative;padding-left:18px;font-size:13.5px;line-height:1.55;color:#C5D3E0}
+.tips li::before{content:"";position:absolute;left:0;top:.68em;width:9px;height:2px;border-radius:1px;background:var(--c)}
+
+/* ---------- ilustrasi ---------- */
+.motif svg,.m-art svg{width:100%;height:auto;overflow:visible}
+.sweep{transform-origin:200px 200px;animation:rot 6s linear infinite}
+.scan{animation:scan 3.4s ease-in-out infinite alternate}
+.bar{transform-box:fill-box;transform-origin:left center;animation:grow 3.6s ease-in-out infinite alternate}
+.b2{animation-delay:-1.2s}.b3{animation-delay:-2.4s}
+.orbit{transform-origin:200px 200px;animation:rot 46s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+@keyframes scan{from{transform:translateY(0)}to{transform:translateY(214px)}}
+@keyframes grow{from{transform:scaleX(.25)}to{transform:scaleX(1)}}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--c) 60%,transparent)}80%,100%{box-shadow:0 0 0 9px transparent}}
+
+/* ============ LAPTOP / TABLET LEBAR (>= 820px) ============ */
+.mob{display:none}
+.desk{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);min-height:100vh;min-height:100dvh}
+.d-art{position:sticky;top:0;align-self:start;height:100vh;height:100dvh;display:grid;place-items:center;overflow:hidden;background-color:var(--surface);border-right:1px solid var(--line);
+  background-image:linear-gradient(color-mix(in srgb,var(--c) 11%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--c) 11%,transparent) 1px,transparent 1px);background-size:44px 44px}
+.d-art::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,color-mix(in srgb,var(--c) 24%,transparent),transparent 62%);pointer-events:none}
+.motif{position:relative;z-index:1;width:min(74%,500px)}
+.d-top{position:absolute;z-index:2;top:28px;left:32px;display:flex;align-items:center;gap:12px;font-size:13px;font-weight:600;color:var(--muted)}
+.d-art .d-chip{position:absolute;z-index:2;left:32px;bottom:28px}
+.d-main{display:flex;align-items:center;padding:clamp(32px,5vw,72px)}
+.d-inner{width:100%;max-width:600px}
+.d-main h1{margin:24px 0 14px;font-size:clamp(30px,3.2vw,46px);line-height:1.08;font-weight:800;letter-spacing:-.025em;text-wrap:balance}
+.lead{font-size:16.5px;line-height:1.65;color:var(--muted);max-width:54ch}
+.prog{margin-top:30px;padding:20px 22px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
+.prog-h{display:flex;justify-content:space-between;align-items:baseline}
+.prog-h b{font-size:14px;font-weight:700}
+.prog-h span{font-family:var(--mono);font-size:12px;color:var(--ct)}
+.prog .bar{display:block;height:6px;margin:12px 0 18px;border-radius:3px;background:var(--line);overflow:hidden;animation:none;transform:none}
+.prog .bar i{display:block;height:100%;border-radius:3px;background:var(--c);box-shadow:0 0 12px color-mix(in srgb,var(--c) 70%,transparent)}
+.duo{display:grid;grid-template-columns:1fr 1.35fr;gap:14px;margin-top:14px}
+.box{padding:16px 18px;border:1px solid var(--line);border-radius:12px}
+.box small{display:block;margin-bottom:8px;font-size:12px;font-weight:600;color:var(--muted)}
+.box>b{font-size:15px;font-weight:700;line-height:1.4}
+.acts{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}
+
+/* ============ HP (< 820px) ============ */
+@media (max-width:819px){
+  .desk{display:none}
+  .mob{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;padding-top:env(safe-area-inset-top,0px)}
+  .m-top{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:rgba(5,8,13,.92);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .m-body{display:flex;flex-direction:column;gap:14px;padding:18px 16px calc(92px + env(safe-area-inset-bottom,0px))}
+  .m-art{position:relative;width:min(58vw,230px);margin:4px auto 0}
+  .m-art::before{content:"";position:absolute;inset:-18%;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--c) 26%,transparent),transparent 66%)}
+  .m-art svg{position:relative}
+  .m-body h1{font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-.02em;text-align:center;text-wrap:balance;margin-top:6px}
+  .m-body .lead{font-size:14.5px;line-height:1.6;text-align:center;margin:0 auto}
+  .m-card{padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+  .m-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;font-size:13px;color:var(--muted);font-weight:600}
+  .m-row b{font-family:var(--mono);font-size:14px;color:var(--ct)}
+  .segs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+  .segs i{height:6px;border-radius:3px;background:var(--line)}
+  .segs i.done{background:var(--c)}
+  .segs i.now{background:repeating-linear-gradient(45deg,var(--c) 0 6px,color-mix(in srgb,var(--c) 45%,transparent) 6px 12px)}
+  .m-now{display:flex;align-items:center;gap:9px;margin:12px 0 2px;font-size:13.5px;font-weight:600;line-height:1.4}
+  .spin{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid color-mix(in srgb,var(--c) 30%,transparent);border-top-color:var(--c);animation:rot .9s linear infinite}
+  .m-more{margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+  .m-more summary{display:flex;align-items:center;justify-content:space-between;list-style:none;cursor:pointer;font-size:13px;font-weight:600;color:var(--ct);min-height:32px}
+  .m-more summary::-webkit-details-marker{display:none}
+  .m-more summary::after{content:"";width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .2s;margin-right:4px}
+  .m-more[open] summary::after{transform:rotate(-135deg)}
+  .m-more .steps{margin-top:14px}
+  .m-eta{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:13px;color:var(--muted);font-weight:600}
+  .m-eta b{font-size:14px;color:var(--ink);text-align:right}
+  .m-card h2{font-size:14px;font-weight:700;margin-bottom:10px;line-height:1.4}
+  .m-bar{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;gap:10px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:rgba(10,17,25,.96);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid var(--line)}
+  .m-bar .btn{height:50px;border-radius:12px}
+  .m-bar .sec{flex:0 0 34%}
+  .m-bar .pri{flex:1}
+}
+@media (min-width:820px) and (max-height:700px){.d-main{align-items:flex-start}}
+
+/* kartu "Yang sedang kami tingkatkan" */
+.fh{margin-top:26px;font-size:14px;font-weight:700}
+.feat{display:grid;gap:12px;margin-top:12px}
+.feat li{display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--soft)}
+.feat .fi{width:42px;height:42px;border-radius:8px;display:grid;place-items:center;background:var(--c);color:var(--on,#fff);box-shadow:0 0 16px color-mix(in srgb,var(--c) 40%,transparent)}
+.feat .fi svg{width:22px;height:22px}
+.feat strong{display:block;font-size:14px;line-height:1.3;font-weight:700}
+.feat small{display:block;margin-top:4px;font-size:12.5px;line-height:1.5;color:var(--muted)}
+@media (min-width:820px){.feat{grid-template-columns:repeat(3,1fr)}.fh{margin-top:22px}}
+@media (max-width:819px){
+  .fh{margin:6px 2px -4px}
+  .feat{grid-template-columns:1fr;gap:10px;margin-top:8px}
+  .feat li{flex-direction:row;align-items:center;gap:14px;padding:12px 14px;border-radius:14px;background:var(--surface)}
+  .feat .fi{flex:none}
+}
+.in-frame .to-portal{display:none}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* pemadatan laptop agar muat di layar ~760px */
+@media (min-width:820px){
+  .d-main{padding:clamp(24px,3.5vw,48px) clamp(32px,5vw,72px)}
+  .d-main h1{margin:18px 0 10px}
+  .lead{font-size:15.5px;line-height:1.6}
+  .prog{margin-top:22px;padding:16px 20px}
+  .prog .bar{margin:10px 0 14px}
+  .st{padding-bottom:12px}
+  .tx b{font-size:14px}
+  .duo{margin-top:12px}
+  .box{padding:14px 16px}
+  .tips ul{gap:6px}
+  .tips li{font-size:13px;line-height:1.5}
+  .acts{margin-top:20px}
+  .btn{height:44px}
+}
+
+</style>
+</head>
+<body>
+<!-- ===== PENGATURAN (silakan ubah) ===== -->
+<script>
+window.PERBAIKAN = {
+  portalUrl: "index.html",   // alamat portal untuk tombol "Kembali ke portal"
+  estimasiTeks: "",          // contoh: "Hari ini, sekitar pukul 15.00 WIB" (kosongkan = "Segera kembali")
+  estimasiISO: "",           // contoh: "2026-10-28T15:00:00+07:00" untuk hitung mundur (boleh kosong)
+  kontakWA: ""               // contoh: "6281234567890" untuk tombol bantuan (kosongkan = disembunyikan)
+};
+</script>
+
+<!-- ================= TAMPILAN LAPTOP ================= -->
+<main class="desk">
+  <section class="d-art" aria-hidden="false">
+    <div class="d-top"><span class="logo sm school"><span class="fb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="10" r="2.6"/><path d="M7.5 17c.6-2 2.4-3.2 4.5-3.2s3.9 1.2 4.5 3.2"/></svg></span><img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiiqlE-zYGrIu6DveVhY3WdPQFZRtdWBx35gGyI88TQnLzTX5SbI78EVTFbPbTHfvc4BVs79cnjvFariowndXyiK3zPBtNUKL1k3sgJW_xbYRWFscNdoQTprJf6yF6CgKoXERgRyzZiOEXHcHO-bcKmXpHjFVbDTJyPOXzOXgo3555vYH6hA_eNuwUVUSUC/w128-h128-p-k-no-nu/Logo%20SMK%20Nusantara%20Lubuk%20Pakam.png" alt="Logo Sekolah" referrerpolicy="no-referrer" onerror="this.remove()"></span><span>SMK Swasta Nusantara Lubuk Pakam</span></div>
+    <div class="motif">
+<svg viewBox="0 0 400 400" role="img" aria-label="Ilustrasi radar lokasi dan bingkai wajah">
+  <g fill="none" stroke="var(--c)">
+    <circle cx="200" cy="200" r="60" opacity=".35"/><circle cx="200" cy="200" r="100" opacity=".28"/>
+    <circle cx="200" cy="200" r="140" opacity=".2"/><circle cx="200" cy="200" r="182" opacity=".5" stroke-dasharray="3 9"/>
+    <path d="M200 14v372M14 200h372" opacity=".16"/>
+  </g>
+  <g class="sweep"><path d="M200 200 L200 18 A182 182 0 0 1 345 91 Z" fill="var(--c)" opacity=".2"/><path d="M200 200V18" stroke="var(--c)" stroke-width="2"/></g>
+  <g fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M148 176v-26a2 2 0 0 1 2-2h26M224 148h26a2 2 0 0 1 2 2v26M252 224v26a2 2 0 0 1-2 2h-26M176 252h-26a2 2 0 0 1-2-2v-26"/>
+  </g>
+  <g fill="none" stroke="var(--c)" stroke-width="5" stroke-linecap="round"><circle cx="200" cy="190" r="17" fill="#05080D"/><path d="M166 244c4-22 18-32 34-32s30 10 34 32"/></g>
+  <g><path d="M300 168c-12-14-19-22-19-31a19 19 0 0 1 38 0c0 9-7 17-19 31z" fill="#05080D" stroke="var(--c)" stroke-width="4"/><circle cx="300" cy="137" r="6.5" fill="var(--c)"/></g>
+</svg></div>
+    <div class="d-chip"><span class="pulse"></span>Mode perbaikan aktif</div>
+  </section>
+  <section class="d-main">
+    <div class="d-inner">
+      <div class="app-id"><span class="logo "><span class="fb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="10" r="2.6"/><path d="M7.5 17c.6-2 2.4-3.2 4.5-3.2s3.9 1.2 4.5 3.2"/></svg></span><img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgIpJW9I9kygFde0tcluF66frz5cxRzG2O59ttSwz4mLYS9no7BCAYi6TzAPibwGbvssvgs_MDLoMfKQ0OnOjCeWh_uz4nRDRoGy1_wtZz7hZnlGrbHjbIy6V4JYq3jBKlb5k5Lm8e4u2Gu4ByBOZ66-RMTt55T6DK982YlgdF_eZHMfsooK6AA7Vwt13vu/s320/Logo.png" alt="Logo Smart Presensi" referrerpolicy="no-referrer" onerror="this.remove()"></span><b>Smart Presensi</b></div>
+      <h1>Presensi sedang disetel ulang</h1>
+      <p class="lead">Fitur selfie dan lokasi GPS sedang kami perbaiki supaya pencatatan kehadiran lebih akurat bagi siswa, wali kelas, dan kepala sekolah.</p>
+
+      <h2 class="fh">Yang sedang kami tingkatkan</h2><ul class="feat"><li><span class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg></span><span class="ft"><strong>Lokasi GPS lebih akurat</strong><small>Titik presensi terbaca tepat saat siswa berada di sekolah.</small></span></li><li><span class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.6-2h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg></span><span class="ft"><strong>Selfie lebih lancar</strong><small>Pengambilan foto kehadiran berjalan mulus di berbagai HP.</small></span></li><li><span class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span class="ft"><strong>Rekap lebih rapi</strong><small>Wali kelas dan kepala sekolah memantau kehadiran dengan mudah.</small></span></li></ul>
+
+      <div class="duo">
+        <div class="box"><small>Perkiraan selesai</small><b class="eta">Segera kembali</b></div>
+        <div class="box tips"><small>Sementara presensi belum bisa dipakai</small><ul>
+<li>Tetap hadir tepat waktu, lalu lapor ke wali kelas agar dicatat manual.</li>
+<li>Simpan bukti kehadiran (misalnya foto di sekolah) bila diminta.</li>
+<li>Muat ulang halaman ini secara berkala; aplikasi tampil normal begitu selesai.</li>
+        </ul></div>
+      </div>
+
+      <div class="acts">
+        <button class="btn pri" type="button" onclick="location.reload()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>Muat ulang halaman</button>
+        <a class="btn sec to-portal" href="index.html" target="_top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Kembali ke portal</a>
+        <a class="btn sec wa" href="#" target="_blank" rel="noopener" hidden>Hubungi admin</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ================= TAMPILAN HP ================= -->
+<main class="mob">
+  <header class="m-top">
+    <div class="app-id"><span class="logo sm"><span class="fb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="10" r="2.6"/><path d="M7.5 17c.6-2 2.4-3.2 4.5-3.2s3.9 1.2 4.5 3.2"/></svg></span><img src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEgIpJW9I9kygFde0tcluF66frz5cxRzG2O59ttSwz4mLYS9no7BCAYi6TzAPibwGbvssvgs_MDLoMfKQ0OnOjCeWh_uz4nRDRoGy1_wtZz7hZnlGrbHjbIy6V4JYq3jBKlb5k5Lm8e4u2Gu4ByBOZ66-RMTt55T6DK982YlgdF_eZHMfsooK6AA7Vwt13vu/s320/Logo.png" alt="Logo Smart Presensi" referrerpolicy="no-referrer" onerror="this.remove()"></span><b>Smart Presensi</b></div>
+    <span class="d-chip"><span class="pulse"></span>Perbaikan</span>
+  </header>
+
+  <div class="m-body">
+    <div class="m-art">
+<svg viewBox="0 0 400 400" role="img" aria-label="Ilustrasi radar lokasi dan bingkai wajah">
+  <g fill="none" stroke="var(--c)">
+    <circle cx="200" cy="200" r="60" opacity=".35"/><circle cx="200" cy="200" r="100" opacity=".28"/>
+    <circle cx="200" cy="200" r="140" opacity=".2"/><circle cx="200" cy="200" r="182" opacity=".5" stroke-dasharray="3 9"/>
+    <path d="M200 14v372M14 200h372" opacity=".16"/>
+  </g>
+  <g class="sweep"><path d="M200 200 L200 18 A182 182 0 0 1 345 91 Z" fill="var(--c)" opacity=".2"/><path d="M200 200V18" stroke="var(--c)" stroke-width="2"/></g>
+  <g fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M148 176v-26a2 2 0 0 1 2-2h26M224 148h26a2 2 0 0 1 2 2v26M252 224v26a2 2 0 0 1-2 2h-26M176 252h-26a2 2 0 0 1-2-2v-26"/>
+  </g>
+  <g fill="none" stroke="var(--c)" stroke-width="5" stroke-linecap="round"><circle cx="200" cy="190" r="17" fill="#05080D"/><path d="M166 244c4-22 18-32 34-32s30 10 34 32"/></g>
+  <g><path d="M300 168c-12-14-19-22-19-31a19 19 0 0 1 38 0c0 9-7 17-19 31z" fill="#05080D" stroke="var(--c)" stroke-width="4"/><circle cx="300" cy="137" r="6.5" fill="var(--c)"/></g>
+</svg></div>
+    <h1>Presensi sedang disetel ulang</h1>
+    <p class="lead">Fitur selfie dan lokasi GPS sedang kami perbaiki supaya pencatatan kehadiran lebih akurat bagi siswa, wali kelas, dan kepala sekolah.</p>
+
+    <h2 class="fh">Yang sedang kami tingkatkan</h2><ul class="feat"><li><span class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg></span><span class="ft"><strong>Lokasi GPS lebih akurat</strong><small>Titik presensi terbaca tepat saat siswa berada di sekolah.</small></span></li><li><span class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.6-2h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg></span><span class="ft"><strong>Selfie lebih lancar</strong><small>Pengambilan foto kehadiran berjalan mulus di berbagai HP.</small></span></li><li><span class="fi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span class="ft"><strong>Rekap lebih rapi</strong><small>Wali kelas dan kepala sekolah memantau kehadiran dengan mudah.</small></span></li></ul>
+
+    <section class="m-card m-eta">
+      <span>Perkiraan selesai</span><b class="eta">Segera kembali</b>
+    </section>
+
+    <section class="m-card tips">
+      <h2>Sementara presensi belum bisa dipakai</h2>
+      <ul>
+<li>Tetap hadir tepat waktu, lalu lapor ke wali kelas agar dicatat manual.</li>
+<li>Simpan bukti kehadiran (misalnya foto di sekolah) bila diminta.</li>
+<li>Muat ulang halaman ini secara berkala; aplikasi tampil normal begitu selesai.</li>
+      </ul>
+    </section>
+  </div>
+
+  <nav class="m-bar" aria-label="Tindakan">
+    <a class="btn sec to-portal" href="index.html" target="_top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>Portal</a>
+    <button class="btn pri" type="button" onclick="location.reload()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>Muat ulang</button>
+  </nav>
+</main>
+
+<script>
+(function(){
+  var C = window.PERBAIKAN || {};
+  var inFrame = false; try{ inFrame = window.self !== window.top; }catch(e){ inFrame = true; }
+  if(inFrame) document.documentElement.classList.add('in-frame');
+  document.querySelectorAll('.to-portal').forEach(function(x){ if(C.portalUrl) x.href = C.portalUrl; });
+  if(C.kontakWA){
+    document.querySelectorAll('.wa').forEach(function(x){
+      x.href = 'https://wa.me/' + C.kontakWA + '?text=' + encodeURIComponent('Halo, saya ingin bertanya tentang Smart Presensi yang sedang diperbaiki.');
+      x.hidden = false;
+    });
+  }
+  var els = document.querySelectorAll('.eta');
+  function fmt(ms){
+    var m = Math.max(0, Math.round(ms/60000)), h = Math.floor(m/60), d = Math.floor(h/24);
+    if(d >= 1) return 'sekitar ' + d + ' hari ' + (h%24) + ' jam lagi';
+    if(h >= 1) return 'sekitar ' + h + ' jam ' + (m%60) + ' menit lagi';
+    return m + ' menit lagi';
+  }
+  function tick(){
+    var t = '';
+    if(C.estimasiISO){
+      var left = new Date(C.estimasiISO).getTime() - Date.now();
+      if(!isNaN(left)) t = left > 0 ? fmt(left) : 'Segera selesai';
+    }
+    if(!t) t = C.estimasiTeks || 'Segera kembali';
+    els.forEach(function(x){ x.textContent = t; });
+  }
+  tick(); setInterval(tick, 30000);
+})();
+</script>
+</body>
+</html>
