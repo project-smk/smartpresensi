@@ -179,6 +179,9 @@
     body.pjj-off .pjj-el { display: none !important; }
     /* Saklar admin "Tampilkan Nilai Presensi": saat mati, kolom Nilai & Predikat di rekap wali kelas disembunyikan */
     body.nilai-off .nilai-el { display: none !important; }
+    /* Revisi 112: kolom Terlambat di panel input presensi, mengikuti saklar yang sama; tersembunyi sampai setting dibaca dari server */
+    .terlambat-el { display: none; }
+    body.terlambat-on .terlambat-el { display: table-cell; }
     /* Kebalikannya: elemen pjj-off-el hanya tampil saat Status PJJ dimatikan */
     body:not(.pjj-off) .pjj-off-el { display: none !important; }
 
@@ -1150,7 +1153,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
           <div class="pr-4">
             <h4 class="text-sm font-bold text-slate-800">Tampilkan Nilai Presensi ke Siswa</h4>
-            <p class="text-xs text-slate-500 mt-0.5">Jika aktif, siswa melihat kartu &quot;Nilai presensi bulan ini&quot; dan keterangan waktu presensinya (tepat / terlalu cepat / terlambat), dan wali kelas melihat kolom Nilai &amp; Pred. di rekap. Jika dimatikan, semuanya tidak tampil ke siswa maupun wali kelas. Perubahan langsung berlaku saat siswa atau wali kelas membuka atau memuat ulang halamannya.</p>
+            <p class="text-xs text-slate-500 mt-0.5"><b>Jika aktif:</b> siswa melihat kartu &quot;Nilai presensi bulan ini&quot; dan keterangan waktu presensinya (tepat / terlalu cepat / terlambat); wali kelas melihat kolom Nilai &amp; Pred. di rekap; dan kolom <b>Terlambat</b> (kotak centang) muncul di panel input presensi wali kelas &amp; sekretaris, sehingga keterlambatan juga bisa ditandai secara manual. Kotak centang hanya bisa dipakai bila status siswa <b>Hadir</b>.<br><b>Jika dimatikan:</b> semuanya tidak tampil ke siswa, wali kelas, maupun sekretaris, dan tanda Terlambat yang sudah tersimpan tidak diubah. Perubahan langsung berlaku saat siswa atau wali kelas membuka atau memuat ulang halamannya.</p>
           </div>
           <label class="relative inline-flex items-center cursor-pointer flex-none">
             <input type="checkbox" id="toggleNilaiTampil" onchange="updateNilaiTampil()" class="sr-only peer">
@@ -1159,6 +1162,14 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         </div>
         <div class="p-4 bg-slate-50 rounded-xl border space-y-4">
           <p class="text-xs text-slate-500">Waktu presensi Hadir dinilai dari jam server: sebelum jam masuk = <b>Terlalu cepat</b>, sampai jam masuk + toleransi = <b>Tepat</b>, lewat itu = <b>Terlambat</b>. Ketiganya tetap dihitung hadir.</p>
+          <div class="text-xs text-slate-500 space-y-1 bg-white border rounded-lg p-3">
+            <p class="font-bold text-slate-700">Cara kerja tanda Terlambat (untuk admin):</p>
+            <p>&bull; <b>Presensi mandiri siswa:</b> tanda Tepat / Terlalu cepat / Terlambat dicatat otomatis dari jam server.</p>
+            <p>&bull; <b>Koreksi oleh wali kelas / sekretaris:</b> centang Terlambat lalu simpan untuk menandai terlambat; hilangkan centang untuk membatalkannya. Tanda Tepat atau Terlalu cepat dari presensi mandiri tetap dipertahankan bila centang tidak diberikan.</p>
+            <p>&bull; <b>Status diganti selain Hadir</b> (mis. Hadir-Terlambat menjadi Sakit, Izin, PKL, PJJ, atau Alpa): tanda Terlambat otomatis dihapus, baik saklar aktif maupun mati, sehingga tidak ada sisa tanda pada status yang bukan Hadir.</p>
+            <p>&bull; <b>Nilai siswa:</b> dihitung ulang otomatis saat status presensi atau tanda Terlambat berubah. Bila tidak ada perubahan, nilai memakai data sementara. Setelah siswa presensi sendiri, nilai di halamannya bisa tertinggal paling lama 5 menit.</p>
+            <p>&bull; <b>Bila server gagal membaca pengaturan</b> saat menyimpan tanda Terlambat: penyimpanan dibatalkan dengan pesan agar menyimpan ulang. Tidak ada data yang berubah dan tidak ada tanda yang hilang diam-diam.</p>
+          </div>
           <div class="grid grid-cols-2 gap-3">
             <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilJamMasuk">Jam masuk sekolah</label><input type="time" id="nilJamMasuk" class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
             <div><label class="block text-xs font-bold text-slate-700 mb-1" for="nilToleransi">Toleransi terlambat (menit)</label><input type="number" id="nilToleransi" min="0" max="240" class="w-full border px-3 py-2 rounded-lg text-sm font-bold bg-white focus:ring-2 focus:ring-primary-500"></div>
@@ -1454,6 +1465,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
                 <th class="p-4">NISN</th>
                 <th class="p-4">Nama Siswa</th>
                 <th class="p-4 text-center">Status Kehadiran</th>
+                <th class="p-4 text-center terlambat-el">Terlambat</th>
                 <th class="p-4 text-center">Keterangan</th>
                 <th class="p-4 text-center">Aksi Baris</th>
               </tr>
@@ -5548,6 +5560,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       gsr().withSuccessHandler(data0 => { vsPromise.then(vs => {
         const data = data0;
         applyPjjVisibility(data && data.pjjAktif === true);
+        const nilaiOn = !!(data && data.nilaiAktif === true);   // Revisi 112: saklar dibaca dari server sebelum baris digambar
+        document.body.classList.toggle('terlambat-on', nilaiOn);
         const allowBukti = currentUser.role !== 'Sekretaris' || !!(vs && vs.sekretarisVerifBukti === true);
         hideStatusBar();
         const tbody = document.getElementById('attendanceTableBody');
@@ -5577,7 +5591,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
             ? `<span class="inline-flex items-center px-2.5 py-1 bg-slate-100 text-slate-500 text-[11px] font-bold rounded-lg"><i class="fas fa-lock mr-1"></i>Hanya Wali Kelas</span>`
             : `<div class="inline-flex items-center gap-2"><button data-nisn="${escH_(s.nisn)}" data-nama="${escH_(s.nama)}" onclick="verifySingleStudent(this.dataset.nisn, this.dataset.nama)" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow transition"><i class="fas fa-save mr-1"></i> Simpan</button>${delBtn}</div>`;
           let statusSelectHtml = `
-            <select id="st_${s.nisn}" ${lockedForSek ? 'disabled title="Hanya wali kelas yang dapat mengubah/memverifikasi status ini"' : ''} class="border p-1.5 rounded text-xs font-bold bg-white focus:ring-2 focus:ring-primary-500 ${lockedForSek ? 'opacity-60 cursor-not-allowed' : ''}">
+            <select id="st_${s.nisn}" onchange="syncTerlambatCb_('${s.nisn}')" ${lockedForSek ? 'disabled title="Hanya wali kelas yang dapat mengubah/memverifikasi status ini"' : ''} class="border p-1.5 rounded text-xs font-bold bg-white focus:ring-2 focus:ring-primary-500 ${lockedForSek ? 'opacity-60 cursor-not-allowed' : ''}">
               ${currentStatus === '' ? '<option value="" selected disabled>-- Pilih --</option>' : ''}
               ${['Hadir', 'PKL', 'Izin', 'Sakit', 'PJJ', 'Alpa'].filter(o => (o !== 'PJJ' || data.pjjAktif === true)).filter(o => allowBukti || !['PKL', 'Izin', 'Sakit', 'PJJ'].includes(o) || o === currentStatus).map(o => `<option value="${o}" ${currentStatus===o?'selected':''}>${o}</option>`).join('')}
             </select>
@@ -5589,12 +5603,25 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
               <td class="p-4">${s.nisn}</td>
               <td class="p-4 font-bold">${escH_(s.nama)}</td>
               <td class="p-4 text-center">${statusSelectHtml}</td>
+              <td class="p-4 text-center terlambat-el"><input type="checkbox" id="tl_${s.nisn}" ${rec && rec.status === 'Hadir' && rec.ketepatan === 'Terlambat' ? 'checked' : ''} ${(currentStatus !== 'Hadir' || lockedForSek) ? 'disabled' : ''} onclick="event.stopPropagation()" title="Centang bila siswa terlambat" class="w-4 h-4 accent-amber-600 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"></td>
               <td class="p-4 text-center">${ketBadge}${ketDetail}</td>
               <td class="p-4 text-center">${actionBtn}</td>
             </tr>
           `;
         });
       }); }).getAttendanceForDate(currentUser.kelas, currentUser.jurusan, date);
+    }
+
+    // Revisi 112: centang Terlambat hanya aktif bila status = Hadir
+    function syncTerlambatCb_(nisn) {
+      const sel = document.getElementById('st_' + nisn), cb = document.getElementById('tl_' + nisn);
+      if (!sel || !cb) return;
+      if (sel.value === 'Hadir') cb.disabled = false; else { cb.checked = false; cb.disabled = true; }
+    }
+    function getTerlambat_(nisn, status) {
+      if (!document.body.classList.contains('terlambat-on') || status !== 'Hadir') return false;
+      const cb = document.getElementById('tl_' + nisn);
+      return !!(cb && cb.checked);
     }
 
     function verifySingleStudent(nisn, nama) {
@@ -5608,7 +5635,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       showStatusBar('Menyimpan status presensi...', 50);
       let noteText = currentUser.role === 'Sekretaris' ? 'Menunggu Verifikasi Wali Kelas' : 'Terverifikasi Wali Kelas';
 
-      const records = [{ tanggal: date, nisn: nisn, nama: nama, kelas: currentUser.kelas, jurusan: currentUser.jurusan, status: status, catatan: noteText, byRole: currentUser.role }];
+      const records = [{ tanggal: date, nisn: nisn, nama: nama, kelas: currentUser.kelas, jurusan: currentUser.jurusan, status: status, terlambat: getTerlambat_(nisn, status), catatan: noteText, byRole: currentUser.role }];
 
       gsr().withSuccessHandler((res) => {
         hideStatusBar();
@@ -5641,7 +5668,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         if (selectEl && selectEl.disabled) return;   // terkunci (PKL/Izin/Sakit/PJJ): hanya wali kelas
         const status = selectEl ? selectEl.value : '';
         if (!status) { belumDipilih++; return; }     // REVISI 92: dihitung, lalu seluruh simpan ditolak di bawah
-        recordsToSave.push({ tanggal: date, nisn: s.nisn, nama: s.nama, kelas: s.kelas || currentUser.kelas, jurusan: s.jurusan || currentUser.jurusan, status: status, catatan: noteText, byRole: currentUser.role });
+        recordsToSave.push({ tanggal: date, nisn: s.nisn, nama: s.nama, kelas: s.kelas || currentUser.kelas, jurusan: s.jurusan || currentUser.jurusan, status: status, terlambat: getTerlambat_(s.nisn, status), catatan: noteText, byRole: currentUser.role });
       });
 
       // REVISI 92: masih ada siswa yang statusnya kosong -> tolak seluruh simpan
