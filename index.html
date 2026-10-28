@@ -3666,6 +3666,13 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
                      'longgar'= foto tanpa wajah ditolak, tetapi bila pemeriksa gagal dimuat unggahan tetap dibolehkan.
                      'mati'   = tanpa pemeriksaan wajah. */
     const FP_FACE_MODE = 'wajib';
+    /* Kelonggaran deteksi wajah FOTO PROFIL (Revisi 117). Foto tanpa wajah tetap ditolak. Nilai lama di dalam kurung.
+       FP_MIN_RATIO  : wajah minimal berapa bagian dari sisi pendek foto (0.12 -> 0.08; 0.06 = sangat longgar).
+       FP_OTHER_MAX  : wajah lain dianggap "wajah kedua" bila luasnya >= bagian ini dari wajah utama (0.5 -> 0.8).
+       FP_SCORE_MIN  : skor keyakinan minimal agar wajah dihitung (0.6 -> 0.5).
+       FP_DETECT_CONF: sensitivitas pemeriksa (0.5 -> 0.4; makin kecil makin peka, makin besar peluang objek mirip wajah lolos).
+       FP_FACE_RETRY : percobaan memuat ulang otomatis bila pemeriksa gagal dimuat (0 = tanpa ulang). */
+    const FP_MIN_RATIO = 0.08, FP_OTHER_MAX = 0.8, FP_SCORE_MIN = 0.5, FP_DETECT_CONF = 0.4, FP_FACE_RETRY = 1;
     const FP_MP_VER = '0.10.14';
     const FP_FACE_MSG = {
       NOFACE: 'Wajah tidak terdeteksi. Gunakan foto wajah Anda sendiri: menghadap kamera, tanpa tertutup, dan cahaya cukup.',
@@ -3682,7 +3689,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         const fileset = await mod.FilesetResolver.forVisionTasks(base + '/wasm');
         return await mod.FaceDetector.createFromOptions(fileset, {
           baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite', delegate: 'CPU' },
-          runningMode: 'IMAGE', minDetectionConfidence: 0.5
+          runningMode: 'IMAGE', minDetectionConfidence: FP_DETECT_CONF
         });
       })();
       const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 45000));
@@ -3699,7 +3706,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       }
       return _fpDetP;
     }
-    async function fpDetectFaces_(bmp) {
+    async function fpDetectFaces_(bmp, minScore) {   // minScore: saring skor (foto profil = FP_SCORE_MIN; selfie presensi tetap 0.6)
       const det = await fpWarmup_();
       const w = bmp.width, h = bmp.height, k = Math.min(1, 640 / Math.max(w, h));
       const cv = document.createElement('canvas'); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
@@ -3708,14 +3715,14 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       return (res.detections || []).map(d => {
         const b = d.boundingBox, c = d.categories && d.categories[0];
         return { x: b.originX / k, y: b.originY / k, w: b.width / k, h: b.height / k, score: c ? c.score : 0 };
-      }).filter(f => f.score >= 0.6).sort((a, b2) => b2.w * b2.h - a.w * a.h);
+      }).filter(f => f.score >= (minScore || 0.6)).sort((a, b2) => b2.w * b2.h - a.w * a.h);
     }
     // Pilih wajah utama; tolak bila tidak ada, terlalu kecil, atau ada wajah besar lain. Mengembalikan persegi potongan yang berpusat di wajah.
     function fpPickCrop_(faces, w, h) {
       if (!faces.length) throw fpErr_('NOFACE');
       const f = faces[0], shortSide = Math.min(w, h), fs = Math.max(f.w, f.h);
-      if (fs < shortSide * 0.12) throw fpErr_('SMALL');
-      if (faces.slice(1).some(o => o.score >= 0.7 && o.w * o.h >= f.w * f.h * 0.5)) throw fpErr_('MANY');
+      if (fs < shortSide * FP_MIN_RATIO) throw fpErr_('SMALL');
+      if (faces.slice(1).some(o => o.score >= 0.7 && o.w * o.h >= f.w * f.h * FP_OTHER_MAX)) throw fpErr_('MANY');
       const side = Math.min(shortSide, fs * 2.6);
       const cx = f.x + f.w / 2, cy = f.y + f.h / 2;
       return { side: side, sx: Math.max(0, Math.min(w - side, cx - side / 2)), sy: Math.max(0, Math.min(h - side, cy - side / 2)) };
@@ -3726,8 +3733,14 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       let side = Math.min(w, h), sx = (w - side) / 2, sy = (h - side) / 2, faceOk = false;
       if (FP_FACE_MODE !== 'mati') {
         let faces = null;
-        try { faces = await fpDetectFaces_(bmp); }
-        catch (e) { if (FP_FACE_MODE === 'wajib') throw fpErr_('LOAD'); }
+        for (let a = 0; a <= FP_FACE_RETRY && !faces; a++) {
+          try { faces = await fpDetectFaces_(bmp, FP_SCORE_MIN); }
+          catch (e) {
+            console.warn('Pemeriksa wajah foto profil gagal (percobaan ' + (a + 1) + '):', e);
+            if (a < FP_FACE_RETRY) { fpSetHint_('Pemeriksa wajah belum siap, mencoba lagi...'); await new Promise(r => setTimeout(r, 1500)); }
+          }
+        }
+        if (!faces && FP_FACE_MODE === 'wajib') throw fpErr_('LOAD');
         if (faces) { const c = fpPickCrop_(faces, w, h); side = c.side; sx = c.sx; sy = c.sy; faceOk = true; }
       }
       const TARGET = 45000;   // panjang teks base64 (±34 KB)
