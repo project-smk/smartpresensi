@@ -207,6 +207,8 @@
     .fp-info { min-width: 0; flex: 1; padding-bottom: 4px; }
     .fp-name { font-size: 15px; font-weight: 800; color: #0f172a; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .fp-meta { font-size: 11px; font-weight: 600; color: #64748b; margin-top: 2px; }
+    /* Revisi 111: formulir presensi terkunci sampai foto profil tersimpan */
+    .fp-locked { opacity: .4; pointer-events: none; user-select: none; filter: grayscale(.4); }
     .fp-hint { font-size: 11.5px; color: #475569; padding: 10px 16px 0; line-height: 1.45; }
     .fp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 16px 16px; }
     .fp-btn { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 11px 10px; border-radius: 12px; font-size: 12.5px; font-weight: 700; transition: transform .12s, background .15s, box-shadow .15s; }
@@ -717,6 +719,10 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         <input type="file" id="fotoProfilInputGaleri" accept="image/*" class="hidden" onchange="fotoProfilDipilih(this)">
       </div>
 
+      <div id="fpGateBanner" class="hidden p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold text-justify" role="alert">
+        <i class="fas fa-lock mr-1"></i> Foto profil wajib diunggah (wajah terlihat jelas) sebelum Anda bisa melakukan presensi. Gunakan kartu foto di atas, lalu tekan Simpan foto.
+      </div>
+
       <div id="studentNilaiCard" class="hidden nilai-card">
         <div class="nilai-head">
           <span class="nilai-title"><i class="fas fa-chart-line"></i>Nilai presensi bulan ini</span>
@@ -735,7 +741,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         </div>
       </div>
 
-      <div class="space-y-4">
+      <div id="studentPresensiForm" class="space-y-4">
         <div>
           <label class="block text-xs font-bold text-slate-700 mb-1">Tanggal Presensi (Hari Ini):</label>
           <input type="date" id="studentAttendanceDate" readonly class="w-full border px-3 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-650 cursor-not-allowed pointer-events-none">
@@ -2774,7 +2780,65 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
 
     /* ===== SELFIE LANGSUNG DARI KAMERA (lewat pembungkus; tanpa pilihan galeri) ===== */
     let selfieAck = false, selfiePending = false;
-    function setSelfieFromDataUrl(d) {
+    /* ----- Deteksi wajah pada selfie presensi status Hadir (Revisi 112) -----
+       Memakai pemeriksa wajah yang sama dengan foto profil (berjalan di HP siswa, foto tidak dikirim ke pihak ketiga).
+       Hanya untuk selfie kamera depan (Hadir). Foto bukti PKL/Izin/Sakit/PJJ (surat, dll) TIDAK diperiksa wajah.
+       SELFIE_FACE_MODE: 'adaptif'= (Revisi 115) KETAT bila internet lancar atau pemeriksa wajah sudah termuat di HP; LONGGAR bila internet lambat/offline.
+                         'wajib'  = selfie tanpa wajah ditolak; bila pemeriksa gagal dimuat, foto juga ditolak.
+                         'longgar'= selfie tanpa wajah ditolak, tetapi bila pemeriksa gagal dimuat foto tetap diterima.
+                         'mati'   = tanpa pemeriksaan wajah. */
+    const SELFIE_FACE_MODE = 'adaptif';
+    /* Dua profil pemeriksaan (ubah angka di sini bila perlu):
+       mode     : 'wajib' = bila pemeriksa gagal dimuat foto ditolak; 'longgar' = bila gagal dimuat foto tetap diterima.
+       minRatio : wajah minimal berapa bagian dari sisi pendek foto (0.12 = ketat, 0.06 = sangat longgar).
+       otherMax : wajah lain dianggap "wajah kedua" bila luasnya >= bagian ini dari wajah utama (0.5 = ketat, 1 = hampir tak pernah menolak). */
+    const SELFIE_PROFIL = {
+      ketat:   { mode: 'wajib',   minRatio: 0.12, otherMax: 0.5 },
+      longgar: { mode: 'longgar', minRatio: 0.08, otherMax: 0.8 }
+    };
+    const SELFIE_FACE_ALLOW_MANY = false;   // true = foto berisi beberapa wajah tetap diterima (selama ada satu wajah yang jelas)
+    // Profil yang dipakai: 'adaptif' -> ketat bila internet lancar (status "Lancar"/"Server ramai") atau pemeriksa sudah termuat; longgar bila "Lambat"/"Offline".
+    function selfieProfil_() {
+      if (SELFIE_FACE_MODE === 'wajib') return SELFIE_PROFIL.ketat;
+      if (SELFIE_FACE_MODE === 'longgar') return SELFIE_PROFIL.longgar;
+      const st = (typeof NetStatus !== 'undefined') ? NetStatus.state : 'ok';
+      return (st === 'ok' || st === 'busy' || _fpDetReady) ? SELFIE_PROFIL.ketat : SELFIE_PROFIL.longgar;
+    }
+    const SELFIE_FACE_RETRY = 1;          // berapa kali pemeriksa wajah dicoba dimuat ulang otomatis bila gagal (0 = tanpa ulang)
+    let _selfieChecking = false;
+    async function selfieWajahOk_(dataUrl) {
+      if (SELFIE_FACE_MODE === 'mati') return true;
+      _selfieChecking = true;
+      const P = selfieProfil_();   // profil dipilih saat foto diperiksa (sesuai kondisi internet saat itu)
+      showStatusBar(_fpDetReady ? 'Memeriksa wajah pada foto selfie...' : 'Menyiapkan pemeriksa wajah (pertama kali, butuh internet beberapa detik)...');
+      try {
+        const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('gambar')); i.src = dataUrl; });
+        let faces = null;
+        for (let a = 0; a <= SELFIE_FACE_RETRY && !faces; a++) {
+          try { faces = await fpDetectFaces_(img); }
+          catch (e) {
+            console.warn('Pemeriksa wajah gagal (percobaan ' + (a + 1) + '):', e);
+            if (a < SELFIE_FACE_RETRY) { showStatusBar('Pemeriksa wajah belum siap, mencoba lagi...'); await new Promise(r => setTimeout(r, 1500)); }
+          }
+        }
+        if (!faces) { if (P.mode === 'wajib') throw fpErr_('LOAD'); return true; }
+        if (!faces.length) throw fpErr_('NOFACE');
+        const f = faces[0], shortSide = Math.min(img.width, img.height);
+        if (Math.max(f.w, f.h) < shortSide * P.minRatio) throw fpErr_('SMALL');
+        if (!SELFIE_FACE_ALLOW_MANY && faces.slice(1).some(o => o.score >= 0.7 && o.w * o.h >= f.w * f.h * P.otherMax)) throw fpErr_('MANY');
+        return true;
+      } catch (e) {
+        hideStatusBar();
+        alert(((e && e.code) ? e.message : 'Foto selfie tidak bisa diperiksa.') + '\n\nSilakan potret ulang selfie Anda.');
+        return false;
+      } finally {
+        _selfieChecking = false;
+        hideStatusBar();
+      }
+    }
+    async function setSelfieFromDataUrl(d) {
+      if (!isStatusBukti() && !(await selfieWajahOk_(d))) return;   // ditolak: foto tidak dipakai
+      if (isStatusBukti()) return;                                  // status diganti saat foto diperiksa: abaikan
       capturedSelfieBase64 = d;
       const preview = document.getElementById('selfiePreview');
       preview.src = d;
@@ -2925,6 +2989,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     function startSelfie() {
       if (isStatusBukti()) { startRearCamera(); return; }
       if (selfiePending) return;
+      if (SELFIE_FACE_MODE !== 'mati') { try { const p = fpWarmup_(); if (p && p.catch) p.catch(() => {}); } catch (e) {} }   // unduh pemeriksa wajah selagi siswa memotret
       const fallback = () => document.getElementById('cameraFileInput').click();
       if (window.top === window) return fallback();
       selfieAck = false;
@@ -3003,6 +3068,14 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
           if (!dataUrl || dataUrl.length < 100) return false;
 
+          if (!isStatusBukti()) {
+            // Revisi 112: selfie Hadir -> periksa wajah dulu, baru ditampilkan & dipakai
+            finished = true;
+            clearTimeout(stuckTimer);
+            hideStatusBar();
+            setSelfieFromDataUrl(dataUrl);
+            return true;
+          }
           capturedSelfieBase64 = dataUrl;
           finished = true;
           clearTimeout(stuckTimer);
@@ -3549,6 +3622,23 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       if (g('fpActionsConfirm')) g('fpActionsConfirm').classList.toggle('hidden', !pending);
       if (g('fpWrap')) g('fpWrap').classList.toggle('pending', !!pending);
     }
+    /* ----- Wajib foto profil sebelum presensi (Revisi 111) -----
+       Aturan dikirim server lewat data login (user.wajibFotoProfil). Browser mengunci formulir presensi;
+       server tetap memeriksa ulang saat presensi dikirim, jadi kunci di browser tidak bisa dilewati. */
+    function fpWajib_(user) { return !(user && user.wajibFotoProfil === false); }
+    function fpGateAktif_(user) { return fpWajib_(user) && !fpDriveId_(user && user.fotoProfil); }
+    function fpScrollKeKartu_() { const c = document.getElementById('studentFotoCard'); if (c && c.scrollIntoView) c.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    function fpApplyGate_(user) {
+      const lock = fpGateAktif_(user);
+      const form = document.getElementById('studentPresensiForm');
+      const banner = document.getElementById('fpGateBanner');
+      if (form) {
+        form.classList.toggle('fp-locked', lock);
+        if (lock) { form.setAttribute('inert', ''); form.setAttribute('aria-disabled', 'true'); }
+        else { form.removeAttribute('inert'); form.removeAttribute('aria-disabled'); }
+      }
+      if (banner) banner.classList.toggle('hidden', !lock);
+    }
     function renderStudentFotoCard_(user, msg) {
       _fpPending = null;
       const g = id => document.getElementById(id);
@@ -3556,8 +3646,9 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       if (g('studentFotoName')) g('studentFotoName').textContent = user.nama || '';
       if (g('studentFotoMeta')) g('studentFotoMeta').textContent = ['NISN ' + (user.nisn || '-'), 'Kelas ' + [user.kelas, user.jurusan].filter(Boolean).join(' ')].join('  ·  ');
       const has = !!fpDriveId_(user.fotoProfil);
-      fpSetHint_(msg || (has ? 'Foto profil tersimpan. Ambil selfie baru atau pilih dari galeri untuk menggantinya.' : 'Belum ada foto profil. Ambil selfie atau pilih foto dari galeri.'));
+      fpSetHint_(msg || (has ? 'Foto profil tersimpan. Ambil selfie baru atau pilih dari galeri untuk menggantinya.' : (fpWajib_(user) ? 'Belum ada foto profil. WAJIB diunggah sebelum presensi: ambil selfie atau pilih foto dari galeri.' : 'Belum ada foto profil. Ambil selfie atau pilih foto dari galeri.')));
       fpButtons_(false);
+      fpApplyGate_(user);   // Revisi 111
     }
     async function fpLoadBitmap_(file) {
       if (window.createImageBitmap) { try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (e) {} }
@@ -3827,6 +3918,15 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
 
     function submitStudentAttendanceWithSelfie() {
       if (presensiSubmitting) return;
+      if (_selfieChecking) { alert('Foto selfie sedang diperiksa. Tunggu sebentar lalu tekan Kirim Presensi lagi.'); return; }
+
+      // Revisi 111: pemeriksaan di browser (server memeriksa ulang). Foto profil wajib ada sebelum presensi.
+      if (fpGateAktif_(currentUser)) {
+        fpApplyGate_(currentUser);
+        alert('Anda belum memiliki foto profil. Unggah foto profil (wajah terlihat jelas) pada kartu di bagian atas terlebih dahulu, lalu kirim presensi.');
+        fpScrollKeKartu_();
+        return;
+      }
 
       const statusBukti = isStatusBukti();
       if (fitur().selfie && !capturedSelfieBase64) {
@@ -3973,6 +4073,11 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
               } else {
                 checkStudentStatusToday(nisn);
               }
+            } else if (res && res.needFotoProfil) {
+              // Revisi 111: server menolak karena foto profil belum ada (mis. sesi lama / foto dihapus admin)
+              if (currentUser) { currentUser.fotoProfil = ''; saveSession(currentUser); renderStudentFotoCard_(currentUser, res.message); }
+              alert(res.message);
+              fpScrollKeKartu_();
             } else if (res && res.relogin) {
               alert(res.message);
               logout();
