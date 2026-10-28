@@ -3685,14 +3685,15 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
        FP_FACE_RETRY : percobaan memuat ulang otomatis bila pemeriksa gagal dimuat (0 = tanpa ulang). */
     const FP_EDGE_MARGIN = 0.005;   // Revisi 114: wajah yang menyentuh tepi foto (lebih dekat dari bagian ini terhadap sisi pendek) dianggap terpotong; 0 = tanpa cek
     const FP_MIN_RATIO = 0.08, FP_OTHER_MAX = 0.8, FP_SCORE_MIN = 0.5, FP_DETECT_CONF = 0.4, FP_FACE_RETRY = 1;
-    /* Revisi 115: cek kemiringan wajah & masker untuk FOTO PROFIL (longgar; hanya menolak yang jelas). Isi false untuk mematikan.
+    /* Revisi 116: cek kemiringan wajah & masker untuk FOTO PROFIL (longgar; hanya menolak yang jelas). Isi false untuk mematikan.
        FP_ROLL_MAX : kepala condong ke bahu maksimal berapa derajat (25 = longgar; 15 = ketat).
        FP_YAW_MAX  : wajah menoleh maksimal (rasio pergeseran hidung terhadap jarak antar mata; 0.35 = longgar, 0.25 = ketat).
-       FP_MASK_DIST: selisih warna area hidung-mulut-dagu terhadap kulit agar dianggap masker (60 = longgar; makin kecil makin ketat).
-       FP_MASK_STD : area dianggap "rata" (tanpa bibir/tekstur) bila variasi kecerahannya di bawah angka ini (16; makin besar makin ketat).
-       FP_MASK_SAME: selisih warna hidung vs mulut/dagu agar dianggap satu bahan yang sama (40). */
-    const FP_POSE_CEK = true, FP_MASK_CEK = true;
-    const FP_ROLL_MAX = 25, FP_YAW_MAX = 0.35, FP_MASK_DIST = 60, FP_MASK_STD = 16, FP_MASK_SAME = 40;
+       Masker: warna kulit pribadi diambil dari dahi / bawah mata, lalu dihitung berapa persen piksel hidung, mulut, dan dagu yang berwarna mirip kulit itu.
+       FP_MASK_NEAR_DIST: piksel dianggap "warna kulit" bila selisih RGB-nya dari kulit acuan kurang dari angka ini (80; makin kecil makin banyak piksel dianggap bukan kulit = makin ketat).
+       FP_MASK_NEAR     : foto ditolak bila di ketiga area itu persentase piksel berwarna kulit kurang dari angka ini (0.3; naikkan = makin ketat, turunkan = makin longgar).
+       FP_MASK_DEBUG    : true = tampilkan angka hasil pengukuran di keterangan kartu foto (untuk penyetelan). */
+    const FP_POSE_CEK = true, FP_MASK_CEK = true, FP_MASK_DEBUG = false;
+    const FP_ROLL_MAX = 25, FP_YAW_MAX = 0.35, FP_MASK_NEAR_DIST = 80, FP_MASK_NEAR = 0.3;
     const FP_MP_VER = '0.10.14';
     const FP_FACE_MSG = {
       NOFACE: 'Wajah tidak terdeteksi. Pastikan wajah tampak penuh: menghadap lurus ke kamera, tidak tertutup (masker, topi, tangan), dan cahaya cukup.',
@@ -3755,8 +3756,24 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const yaw = Math.abs(((nose.x - mx) * dx + (nose.y - my) * dy) / (ed * ed));   // pergeseran hidung sepanjang garis mata
       if (yaw > FP_YAW_MAX) throw fpErr_('YAW');
     }
-    /* Revisi 115: perkiraan masker. Menolak HANYA bila hidung, mulut, dan dagu sama-sama rata, satu bahan, dan warnanya jauh beda dari kulit.
-       Kegagalan membaca piksel tidak menolak foto. */
+    /* Revisi 116: perkiraan masker. Warna kulit acuan dipilih otomatis dari area dahi / bawah mata (yang paling mirip kulit),
+       lalu hidung, mulut, dan dagu diperiksa: bila ketiganya hampir tidak berwarna kulit, dianggap tertutup masker.
+       Jenggot/jilbab tidak ikut tertolak karena hidung dan mulut tetap harus sama-sama bukan kulit. Gagal membaca piksel = foto diterima. */
+    function fpSkinPix_(r, g, b) {   // rentang kulit umum (YCbCr)
+      const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b, cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+      return cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173;
+    }
+    function fpSkinFrac_(d) { let n = 0, c = 0; for (let i = 0; i < d.length; i += 4) { n++; if (fpSkinPix_(d[i], d[i + 1], d[i + 2])) c++; } return n ? c / n : 0; }
+    function fpMeanRgb_(d) { let r = 0, g = 0, b = 0, n = d.length / 4; for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; } return n ? [r / n, g / n, b / n] : [0, 0, 0]; }
+    function fpNearFrac_(d, ref) { let n = 0, c = 0; for (let i = 0; i < d.length; i += 4) { n++; if (Math.hypot(d[i] - ref[0], d[i + 1] - ref[1], d[i + 2] - ref[2]) < FP_MASK_NEAR_DIST) c++; } return n ? c / n : 1; }
+    // refs: daftar piksel area kulit (dahi, bawah mata); nose/mouth/chin: piksel area bawah wajah. Mengembalikan { masker, near:[hidung,mulut,dagu], refSkin } atau null bila acuan tidak layak.
+    function fpMaskDecide_(refs, nose, mouth, chin) {
+      let best = null, bestF = 0;
+      refs.forEach(d => { const f = fpSkinFrac_(d); if (f > bestF) { bestF = f; best = d; } });
+      if (!best || bestF < 0.5) return null;   // kulit acuan tidak jelas (cahaya/tone) -> jangan menolak
+      const ref = fpMeanRgb_(best), near = [nose, mouth, chin].map(d => fpNearFrac_(d, ref));
+      return { masker: near.every(v => v < FP_MASK_NEAR), near: near, refSkin: bestF };
+    }
     function fpMaskCek_(bmp, f) {
       if (!FP_MASK_CEK || !f.kp) return;
       try {
@@ -3770,22 +3787,20 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           const x0 = Math.max(0, Math.round((cx - pw / 2) * k)), y0 = Math.max(0, Math.round((cy - ph / 2) * k));
           const x1 = Math.min(cv.width, Math.round((cx + pw / 2) * k)), y1 = Math.min(cv.height, Math.round((cy + ph / 2) * k));
           if (x1 - x0 < 3 || y1 - y0 < 3) return null;
-          const d = ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data, n = d.length / 4;
-          let r = 0, g = 0, bl = 0, l = 0, l2 = 0;
-          for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; bl += d[i + 2]; const y = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; l += y; l2 += y * y; }
-          const ml = l / n;
-          return { r: r / n, g: g / n, b: bl / n, std: Math.sqrt(Math.max(0, l2 / n - ml * ml)) };
+          return ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
         };
-        const dist = (p, q) => Math.hypot(p.r - q.r, p.g - q.g, p.b - q.b);
-        const avg = (arr) => ({ r: arr.reduce((s, p) => s + p.r, 0) / arr.length, g: arr.reduce((s, p) => s + p.g, 0) / arr.length, b: arr.reduce((s, p) => s + p.b, 0) / arr.length });
-        // acuan kulit: tepat di bawah mata kiri & kanan
-        const ref = [patch(eyes[0].x, eyeY + ed * 0.2, ed * 0.3, ed * 0.15), patch(eyes[1].x, eyeY + ed * 0.2, ed * 0.3, ed * 0.15)].filter(Boolean);
+        const refs = [
+          patch(eyes[0].x, eyeY + ed * 0.22, ed * 0.3, ed * 0.15), patch(eyes[1].x, eyeY + ed * 0.22, ed * 0.3, ed * 0.15),
+          patch(midX, eyeY - ed * 0.55, ed * 0.5, ed * 0.2), patch(midX, eyeY - ed * 0.4, ed * 0.5, ed * 0.15)
+        ].filter(Boolean);
         const nose = patch(f.kp[2].x, f.kp[2].y, ed * 0.35, ed * 0.2);
         const mouth = patch(f.kp[3].x, f.kp[3].y, ed * 0.6, ed * 0.3);
         const chin = patch(f.kp[3].x, f.kp[3].y + ed * 0.6, ed * 0.5, ed * 0.25);
-        if (!ref.length || !nose || !mouth || !chin) return;
-        const skin = avg(ref), lower = avg([mouth, chin]);
-        if (dist(lower, skin) > FP_MASK_DIST && mouth.std < FP_MASK_STD && chin.std < FP_MASK_STD && dist(nose, lower) < FP_MASK_SAME) throw fpErr_('MASK');
+        if (!refs.length || !nose || !mouth || !chin) { if (FP_MASK_DEBUG) fpSetHint_('Cek masker dilewati: area wajah tidak lengkap.'); return; }
+        const r = fpMaskDecide_(refs, nose, mouth, chin);
+        console.log('Cek masker:', r);
+        if (FP_MASK_DEBUG) fpSetHint_(r ? ('Cek masker: hidung ' + r.near[0].toFixed(2) + ', mulut ' + r.near[1].toFixed(2) + ', dagu ' + r.near[2].toFixed(2) + ' (ditolak bila ketiganya < ' + FP_MASK_NEAR + '); acuan kulit ' + r.refSkin.toFixed(2)) : 'Cek masker dilewati: warna kulit acuan tidak jelas.');
+        if (r && r.masker) throw fpErr_('MASK');
       } catch (e) { if (e && e.code === 'MASK') throw e; console.warn('Cek masker dilewati:', e); }
     }
     // Pilih wajah utama; tolak bila tidak ada, terlalu kecil, atau ada wajah besar lain. Mengembalikan persegi potongan yang berpusat di wajah.
