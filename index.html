@@ -2683,7 +2683,20 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         const savedUser = loadSavedSession();
         if (savedUser) {
           currentUser = savedUser;
-          if (currentUser && currentUser.role) {
+          if (currentUser && currentUser.role === 'Siswa') {
+            // Revisi 124: saklar nilai dibaca dari server DULU, baru halaman siswa ditampilkan (tidak ada panel yang muncul belakangan)
+            document.getElementById('loginSection').classList.add('hidden');
+            showStatusBar('Memuat halaman siswa...', 40);
+            const nisnR = currentUser.nisn;
+            Promise.race([
+              runServer('getMyNilaiPresensi', [], { retries: 1 }).then(r => { if (r && typeof r === 'object') window._nilaiAwal = { nisn: nisnR, data: r }; }),
+              new Promise(done => setTimeout(done, 3500))   // batas tunggu; lewat itu halaman tetap dibuka dan nilai dimuat menyusul
+            ]).catch(() => {}).then(() => {
+              hideStatusBar();
+              if (currentUser && currentUser.role === 'Siswa') applyUserSession(currentUser);
+              else if (!currentUser) document.getElementById('loginSection').classList.remove('hidden');
+            });
+          } else if (currentUser && currentUser.role) {
             applyUserSession(currentUser);
           }
         }
@@ -2848,6 +2861,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         if (res && res.success) {
           currentUser = res.user;
           window._turunKelas = (currentUser.role === 'Guru Wali Kelas' && currentUser.turunKelasAktif === true);   // Revisi 121: saklar dibaca saat login
+          window._nilaiAwal = (currentUser.role === 'Siswa' && res.nilaiAwal && typeof res.nilaiAwal === 'object') ? { nisn: currentUser.nisn, data: res.nilaiAwal } : null;   // Revisi 124
           saveSession(currentUser);
           applyUserSession(currentUser);
         } else {
@@ -2871,7 +2885,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       dcGen++; dcClear_();   // cache laporan di perangkat tidak boleh terbawa ke akun lain
       currentUser = null;
       window._turunKelas = false;   // Revisi 121
-      { const nc = document.getElementById('studentNilaiCard'); if (nc) { nc.classList.add('hidden'); delete nc.dataset.owner; } }   // Revisi 123
+      { const nc = document.getElementById('studentNilaiCard'); if (nc) { nc.classList.add('hidden'); delete nc.dataset.owner; delete nc.dataset.sig; } window._nilaiAwal = null; }   // Revisi 123/124
       appCache = { attendanceData: null, monthlyReportData: null, matrixReportData: null, studentsData: null };
       document.getElementById('userInfo').classList.add('hidden');
       ['adminDashboard', 'waliDashboard', 'studentDashboard', 'kepsekDashboard', 'barcodeDashboard'].forEach(id => {
@@ -4028,6 +4042,13 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       document.getElementById('studentNameDisplay').value = user.nama;
       document.getElementById('studentNisnDisplay').value = user.nisn;
       checkStudentStatusToday(user.nisn);
+      const pre = window._nilaiAwal; window._nilaiAwal = null;   // Revisi 124: nilai sudah dibawa respons login / pemulihan sesi
+      if (pre && String(pre.nisn) === String(user.nisn) && pre.data) {
+        const nc = document.getElementById('studentNilaiCard');
+        if (nc) nc.dataset.owner = String(user.nisn);
+        renderStudentNilai(pre.data);
+        window._nilaiAwalUsed = true;
+      }
       syncStudentNilai(true);
     }
 
@@ -4037,13 +4058,14 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     function syncStudentNilai(withFitur) {
       window._nilaiSyncAt = Date.now();
       const card = document.getElementById('studentNilaiCard');
+      const skipLoad = window._nilaiAwalUsed === true; window._nilaiAwalUsed = false;
       fetchPresensiConfig(null, true).then(cfg => {
         if (withFitur) applyFiturPresensi(cfg);
-        if (cfg && cfg.nilai && cfg.nilai.tampil === true) loadStudentNilai();
+        if (cfg && cfg.nilai && cfg.nilai.tampil === true) { if (!skipLoad || (card && card.classList.contains('hidden'))) loadStudentNilai(); }
         else if (card) card.classList.add('hidden');
       }).catch(() => {
         if (withFitur) { try { applyFiturPresensi(); } catch (e) {} }
-        loadStudentNilai();   // gagal membaca saklar: server tetap hanya mengirim nilai bila saklar aktif
+        if (!skipLoad) loadStudentNilai();   // gagal membaca saklar: server tetap hanya mengirim nilai bila saklar aktif
       });
     }
     document.addEventListener('visibilitychange', () => {
@@ -4059,13 +4081,16 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const card = document.getElementById('studentNilaiCard');
       if (!card) return;
       const owner = String((currentUser && currentUser.nisn) || '');
-      if (card.dataset.owner !== owner) card.classList.add('hidden');   // akun berbeda di perangkat yang sama: jangan tampilkan nilai lama; muat ulang tanpa berkedip bila akun sama
+      if (card.dataset.owner !== owner) { card.classList.add('hidden'); delete card.dataset.sig; }   // akun berbeda di perangkat yang sama: jangan tampilkan nilai lama; muat ulang tanpa berkedip bila akun sama
       runServer('getMyNilaiPresensi', [], { retries: 1 }).then(res => { card.dataset.owner = owner; renderStudentNilai(res); }, () => {});
     }
     function renderStudentNilai(res) {
       const card = document.getElementById('studentNilaiCard'), body = document.getElementById('studentNilaiBody'), bln = document.getElementById('studentNilaiBulan');
       if (!card || !body) return;
-      if (!res || res.tampil !== true) { card.classList.add('hidden'); return; }   // saklar admin mati -> tidak tampil
+      if (!res || res.tampil !== true) { card.classList.add('hidden'); delete card.dataset.sig; return; }   // saklar admin mati -> tidak tampil
+      const sig = JSON.stringify([res.bulan, res.nilai, res.pred]);
+      if (card.dataset.sig === sig && !card.classList.contains('hidden')) return;   // isi sama: jangan gambar ulang (cegah kedip & animasi bar berulang)
+      card.dataset.sig = sig;
       card.className = 'fp-nilai';
       if (bln) {
         const NB = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
