@@ -1197,33 +1197,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         </div>
       </div>
 
-      <!-- Admin Tab Profil Siswa (Revisi 118) -->
-      <div id="adminTabProfil" class="hidden space-y-4">
-        <div class="bg-white p-5 rounded-xl shadow-sm border space-y-4">
-          <div>
-            <h2 class="text-xl font-bold text-slate-800"><i class="fas fa-id-badge text-primary-600 mr-2"></i>Profil Siswa</h2>
-            <p class="text-xs text-slate-500">Lihat foto profil siswa. Foto yang tidak sesuai bisa dihapus dengan memilih alasan; siswa akan melihat alasannya dan diminta mengambil selfie baru.</p>
-          </div>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Kelas</label>
-              <select id="psKelas" onchange="loadProfilSiswa()" class="w-full border px-3 py-2 rounded-lg text-xs bg-white"><option value="ALL">Semua Kelas</option><option value="X">X</option><option value="XI">XI</option><option value="XII">XII</option></select></div>
-            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Jurusan</label>
-              <select id="psJurusan" onchange="loadProfilSiswa()" class="w-full border px-3 py-2 rounded-lg text-xs bg-white"><option value="ALL">Semua Jurusan</option><option value="AKL">AKL</option><option value="MPLB">MPLB</option><option value="TJKT">TJKT</option></select></div>
-            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Status Foto</label>
-              <select id="psStatus" onchange="renderProfilSiswa_(true)" class="w-full border px-3 py-2 rounded-lg text-xs bg-white"><option value="ALL">Semua</option><option value="ADA">Sudah ada foto</option><option value="BELUM">Belum ada foto</option><option value="DIHAPUS">Dihapus admin (belum diganti)</option></select></div>
-            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Cari Nama / NISN</label>
-              <input type="text" id="psCari" oninput="psCariDebounce_()" placeholder="Ketik nama atau NISN" class="w-full border px-3 py-2 rounded-lg text-xs bg-white"></div>
-          </div>
-          <div class="flex items-center justify-between gap-3">
-            <p id="profilSiswaInfo" class="text-xs text-slate-500">Memuat...</p>
-            <button type="button" onclick="loadProfilSiswa()" class="text-xs font-bold text-primary-700 border border-primary-200 px-3 py-1.5 rounded-lg hover:bg-primary-50"><i class="fas fa-rotate mr-1"></i>Muat ulang</button>
-          </div>
-        </div>
-        <div id="profilSiswaGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
-        <div id="profilSiswaMoreWrap" class="hidden text-center">
-          <button type="button" onclick="psTampilLagi_()" class="px-4 py-2 rounded-lg border text-xs font-bold text-slate-700 bg-white hover:bg-slate-50">Tampilkan lebih banyak</button>
-        </div>
-      </div>
+      <!-- Admin Tab Profil Siswa (Revisi 118; panel dibangun oleh psBuild_) -->
+      <div id="adminTabProfil" class="hidden space-y-4"><div id="psRoot" class="space-y-4"></div></div>
 
       <!-- Admin Tab Verifikasi -->
       <div id="adminTabVerifikasi" class="hidden max-w-2xl bg-white rounded-2xl shadow-sm border p-6 space-y-6">
@@ -1470,6 +1445,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
             <button id="tabKeteranganBtn" onclick="switchWaliTab('keterangan')" class="tab-btn"><i class="fas fa-file-pen mr-1"></i>Keterangan</button>
             <button id="tabBarcodeBtn" onclick="switchWaliTab('barcode')" class="tab-btn"><i class="fas fa-qrcode mr-1"></i>Barcode</button>
             <button id="tabVerifBarcodeBtn" onclick="switchWaliTab('verifbarcode')" class="tab-btn"><i class="fas fa-user-check mr-1"></i>Verifikasi Barcode</button>
+            <button id="tabProfilBtn" onclick="switchWaliTab('profil')" class="tab-btn"><i class="fas fa-id-badge mr-1"></i>Profil Siswa</button>
             <button id="tabSiswaBtn" onclick="switchWaliTab('siswa')" class="tab-btn"><i class="fas fa-users mr-1"></i>Kelola Siswa</button>
             <button id="tabAkunBtn" onclick="switchWaliTab('akun')" class="tab-btn"><i class="fas fa-user-cog mr-1"></i>Akun Saya</button>
           </div>
@@ -1610,6 +1586,9 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           </div>
         </div>
       </div>
+
+      <!-- Tab Profil Siswa Wali Kelas (Revisi 119) -->
+      <div id="waliTabProfil" class="hidden space-y-4"><div id="pwRoot" class="space-y-4"></div></div>
 
       <!-- Tab Keterangan Wali Kelas (PKL / Izin / Sakit / PJJ) -->
       <div id="waliTabKeterangan" class="hidden space-y-4">
@@ -1874,6 +1853,9 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         </button>
         <button id="kepsekTabKeteranganBtn" onclick="switchKepsekTab('keterangan')" class="tab-btn">
           <i class="fas fa-file-pen mr-1.5"></i>Keterangan
+        </button>
+        <button id="kepsekTabProfilBtn" onclick="switchKepsekTab('profil')" class="tab-btn">
+          <i class="fas fa-id-badge mr-1.5"></i>Profil Siswa
         </button>
         <button id="kepsekTabAkunBtn" onclick="switchKepsekTab('akun')" class="tab-btn">
           <i class="fas fa-user-cog mr-1.5"></i>Akun Saya
@@ -2152,6 +2134,9 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           </div>
         </div>
       </div>
+
+      <!-- Tab Profil Siswa Kepsek / Wakepsek (Revisi 119) -->
+      <div id="kepsekSectionProfil" class="hidden space-y-4"><div id="pkRoot" class="space-y-4"></div></div>
 
       <!-- Tab Akun Saya Kepsek / Wakepsek -->
       <div id="kepsekSectionAkun" class="hidden max-w-xl mx-auto bg-white rounded-2xl shadow-sm border p-6 space-y-6">
@@ -2746,7 +2731,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         if (user.role === 'Sekretaris') {
           document.getElementById('panelTitleText').innerText = `Panel Sekretaris Kelas`;
           document.getElementById('waliInfoTag').innerText = `Sekretaris Kelas ${user.kelas} - ${user.jurusan} (Input Presensi Harian)`;
-          ['tabRekapBtn', 'tabMatrixBtn', 'tabBuktiFotoBtn', 'tabKeteranganBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn'].forEach(id => {
+          ['tabRekapBtn', 'tabMatrixBtn', 'tabBuktiFotoBtn', 'tabKeteranganBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn', 'tabProfilBtn'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = 'none';
           });
@@ -2758,7 +2743,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         } else {
           document.getElementById('panelTitleText').innerText = `Panel Guru Wali Kelas`;
           document.getElementById('waliInfoTag').innerText = `Wali Kelas ${user.kelas} - ${user.jurusan}`;
-          ['tabRekapBtn', 'tabMatrixBtn', 'tabBuktiFotoBtn', 'tabKeteranganBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn'].forEach(id => {
+          ['tabRekapBtn', 'tabMatrixBtn', 'tabBuktiFotoBtn', 'tabKeteranganBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn', 'tabProfilBtn'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = 'inline-block';
           });
@@ -3696,7 +3681,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       if (has || !alasan) { box.classList.add('hidden'); box.textContent = ''; return; }
       box.textContent = '';
       const h = document.createElement('p'); h.className = 'font-bold mb-1';
-      h.textContent = 'Foto profil Anda dihapus oleh admin' + (user.fotoHapusTgl ? ' (' + user.fotoHapusTgl + ')' : '') + '.';
+      h.textContent = 'Foto profil Anda dihapus oleh ' + (user.fotoHapusOleh || 'Admin') + (user.fotoHapusTgl ? ' (' + user.fotoHapusTgl + ')' : '') + '.';
       const a = document.createElement('p'); a.textContent = 'Alasan: ' + alasan + '.';
       const c = document.createElement('p'); c.className = 'mt-1'; c.textContent = 'Silakan ambil selfie baru dengan wajah tampak penuh agar bisa presensi kembali.';
       box.appendChild(h); box.appendChild(a); box.appendChild(c);
@@ -3707,9 +3692,9 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       try {
         if (!res || typeof res.fotoProfil !== 'string' || !currentUser || currentUser.role !== 'Siswa') return;
         if (_fpPending) return;   // jangan ganggu siswa yang sedang memilih foto
-        const baru = res.fotoProfil || '', alasan = res.fotoHapusAlasan || '', tgl = res.fotoHapusTgl || '';
-        if ((currentUser.fotoProfil || '') === baru && (currentUser.fotoHapusAlasan || '') === alasan) return;
-        currentUser.fotoProfil = baru; currentUser.fotoHapusAlasan = alasan; currentUser.fotoHapusTgl = tgl;
+        const baru = res.fotoProfil || '', alasan = res.fotoHapusAlasan || '', tgl = res.fotoHapusTgl || '', oleh = res.fotoHapusOleh || '';
+        if ((currentUser.fotoProfil || '') === baru && (currentUser.fotoHapusAlasan || '') === alasan && (currentUser.fotoHapusOleh || '') === oleh) return;
+        currentUser.fotoProfil = baru; currentUser.fotoHapusAlasan = alasan; currentUser.fotoHapusTgl = tgl; currentUser.fotoHapusOleh = oleh;
         saveSession(currentUser);
         fpFillAvatar_(document.getElementById('userAvatarInitial'), currentUser.fotoProfil, currentUser.nama, 64);
         renderStudentFotoCard_(currentUser);
@@ -3977,7 +3962,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         done();
         if (res && res.success) {
           currentUser.fotoProfil = res.fotoUrl;
-          currentUser.fotoHapusAlasan = ''; currentUser.fotoHapusTgl = '';   // Revisi 118
+          currentUser.fotoHapusAlasan = ''; currentUser.fotoHapusTgl = ''; currentUser.fotoHapusOleh = '';   // Revisi 118
           saveSession(currentUser);
           fpFillAvatar_(document.getElementById('userAvatarInitial'), currentUser.fotoProfil, currentUser.nama, 64);
           renderStudentFotoCard_(currentUser, 'Foto profil berhasil disimpan.');
@@ -4270,7 +4255,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
               }
             } else if (res && res.needFotoProfil) {
               // Revisi 111: server menolak karena foto profil belum ada (mis. sesi lama / foto dihapus admin)
-              if (currentUser) { currentUser.fotoProfil = ''; currentUser.fotoHapusAlasan = res.fotoHapusAlasan || ''; currentUser.fotoHapusTgl = res.fotoHapusTgl || ''; saveSession(currentUser); renderStudentFotoCard_(currentUser, res.message); }
+              if (currentUser) { currentUser.fotoProfil = ''; currentUser.fotoHapusAlasan = res.fotoHapusAlasan || ''; currentUser.fotoHapusTgl = res.fotoHapusTgl || ''; currentUser.fotoHapusOleh = res.fotoHapusOleh || ''; saveSession(currentUser); renderStudentFotoCard_(currentUser, res.message); }
               alert(res.message);
               fpScrollKeKartu_();
             } else if (res && res.relogin) {
@@ -4332,12 +4317,44 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       return R * c;
     }
 
-    /* ===== PROFIL SISWA (ADMIN) — Revisi 118 =====
-       Daftar foto profil siswa dengan filter kelas/jurusan (server) + status/pencarian (browser).
-       Hapus foto = pilih alasan dari daftar; alasan tersimpan di sheet dan tampil di halaman siswa. */
-    let _psData = [], _psOpsi = [], _psShown = 0, _psSel = null, _psBusy = false, _psTimer = null;
+    /* ===== PROFIL SISWA — Revisi 118 (Admin) / 119 (Kepsek, Wakasek, Wali Kelas) =====
+       Satu panel dipakai tiga peran lewat prefix id: 'ps' = Admin, 'pk' = Kepsek/Wakasek (semua kelas),
+       'pw' = Wali Kelas (dikunci ke kelasnya oleh server). Semua peran boleh hapus foto; penghapus dicatat di sheet (kolom K). Filter kelas/jurusan di server; status & cari di browser. */
+    const PS = {};
     const PS_PAGE = 40;
-    function psV_(id) { const e = document.getElementById(id); return e ? e.value : ''; }
+    let _psSel = null, _psP = 'ps', _psBusy = false;
+    function psOleh_() { const r = currentUser && currentUser.role; return r === 'Guru Wali Kelas' ? 'Wali Kelas' : (r || 'Admin'); }
+    function psC_(p) { return PS[p] || (PS[p] = { data: [], opsi: [], shown: PS_PAGE, timer: null, built: false }); }
+    function psV_(p, id) { const e = document.getElementById(p + id); return e ? e.value : ''; }
+    function psBuild_(p) {
+      const c = psC_(p);
+      const owner = (currentUser && currentUser.username) || '';
+      if (c.built && c.owner === owner) return;   // akun berganti di perangkat yang sama -> bangun ulang & buang data lama
+      c.owner = owner; c.data = []; c.opsi = [];
+      const root = document.getElementById(p + 'Root');
+      if (!root) return;
+      const wali = (p === 'pw');
+      const kelasJur = wali
+        ? '<div class="col-span-2 flex items-end"><p class="text-xs font-bold text-primary-700 bg-primary-50 border border-primary-100 rounded-lg px-3 py-2 w-full"><i class="fas fa-school mr-1.5"></i>Kelas ' + escH_((currentUser && currentUser.kelas) || '') + ' - ' + escH_((currentUser && currentUser.jurusan) || '') + '</p></div>'
+        : '<div><label class="block text-[11px] font-bold text-slate-600 mb-1">Kelas</label><select id="' + p + 'Kelas" onchange="loadProfilSiswa(\'' + p + '\')" class="w-full border px-3 py-2 rounded-lg text-xs bg-white"><option value="ALL">Semua Kelas</option><option value="X">X</option><option value="XI">XI</option><option value="XII">XII</option></select></div>'
+        + '<div><label class="block text-[11px] font-bold text-slate-600 mb-1">Jurusan</label><select id="' + p + 'Jurusan" onchange="loadProfilSiswa(\'' + p + '\')" class="w-full border px-3 py-2 rounded-lg text-xs bg-white"><option value="ALL">Semua Jurusan</option><option value="AKL">AKL</option><option value="MPLB">MPLB</option><option value="TJKT">TJKT</option></select></div>';
+      const sub = wali
+        ? 'Foto profil siswa di kelas Anda. Foto yang tidak sesuai bisa dihapus dengan memilih alasan; siswa akan melihat alasan dan bahwa Wali Kelas yang menghapusnya, lalu diminta mengambil selfie baru.'
+        : 'Lihat foto profil siswa. Foto yang tidak sesuai bisa dihapus dengan memilih alasan; siswa akan melihat alasan dan peran Anda sebagai penghapus, lalu diminta mengambil selfie baru.';
+      root.innerHTML =
+        '<div class="bg-white p-5 rounded-xl shadow-sm border space-y-4">'
+        + '<div><h2 class="text-xl font-bold text-slate-800"><i class="fas fa-id-badge text-primary-600 mr-2"></i>Profil Siswa</h2><p class="text-xs text-slate-500">' + sub + '</p></div>'
+        + '<div class="grid grid-cols-2 md:grid-cols-4 gap-3">' + kelasJur
+        + '<div><label class="block text-[11px] font-bold text-slate-600 mb-1">Status Foto</label><select id="' + p + 'Status" onchange="renderProfilSiswa_(\'' + p + '\', true)" class="w-full border px-3 py-2 rounded-lg text-xs bg-white"><option value="ALL">Semua</option><option value="ADA">Sudah ada foto</option><option value="BELUM">Belum ada foto</option><option value="DIHAPUS">Foto dihapus (belum diganti)</option></select></div>'
+        + '<div' + (wali ? ' class="col-span-2 md:col-span-1"' : '') + '><label class="block text-[11px] font-bold text-slate-600 mb-1">Cari Nama / NISN</label><input type="text" id="' + p + 'Cari" oninput="psCariDebounce_(\'' + p + '\')" placeholder="Ketik nama atau NISN" class="w-full border px-3 py-2 rounded-lg text-xs bg-white"></div>'
+        + '</div>'
+        + '<div class="flex items-center justify-between gap-3"><p id="' + p + 'Info" class="text-xs text-slate-500">Memuat...</p>'
+        + '<button type="button" onclick="loadProfilSiswa(\'' + p + '\')" class="text-xs font-bold text-primary-700 border border-primary-200 px-3 py-1.5 rounded-lg hover:bg-primary-50"><i class="fas fa-rotate mr-1"></i>Muat ulang</button></div>'
+        + '</div>'
+        + '<div id="' + p + 'Grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>'
+        + '<div id="' + p + 'More" class="hidden text-center"><button type="button" onclick="psTampilLagi_(\'' + p + '\')" class="px-4 py-2 rounded-lg border text-xs font-bold text-slate-700 bg-white hover:bg-slate-50">Tampilkan lebih banyak</button></div>';
+      c.built = true;
+    }
     function psImg_(box, url, nama, size) {
       box.textContent = '';
       const ini = document.createElement('span');
@@ -4354,24 +4371,25 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       img.onerror = function () { if (tried++ === 0) img.src = 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + size; };
       img.src = 'https://lh3.googleusercontent.com/d/' + id + '=s' + size;
     }
-    function psCariDebounce_() { clearTimeout(_psTimer); _psTimer = setTimeout(() => renderProfilSiswa_(true), 250); }
-    function psTampilLagi_() { _psShown += PS_PAGE; renderProfilSiswa_(false); }
-    function psFiltered_() {
-      const q = psV_('psCari').trim().toLowerCase(), st = psV_('psStatus');
-      return _psData.filter(x => {
+    function psCariDebounce_(p) { const c = psC_(p); clearTimeout(c.timer); c.timer = setTimeout(() => renderProfilSiswa_(p, true), 250); }
+    function psTampilLagi_(p) { psC_(p).shown += PS_PAGE; renderProfilSiswa_(p, false); }
+    function psFiltered_(p) {
+      const q = psV_(p, 'Cari').trim().toLowerCase(), st = psV_(p, 'Status');
+      return psC_(p).data.filter(x => {
         if (st === 'ADA' && !x.fotoUrl) return false;
         if (st === 'BELUM' && x.fotoUrl) return false;
         if (st === 'DIHAPUS' && (x.fotoUrl || !x.alasan)) return false;
         return !q || (String(x.nama) + ' ' + String(x.nisn)).toLowerCase().indexOf(q) >= 0;
       });
     }
-    function psCard_(x) {
+    function psCard_(p, x) {
+      const canDel = true;   // Revisi 120: Admin, Kepsek, Wakasek, Wali (wali dibatasi kelasnya di server)
       const card = document.createElement('div');
       card.className = 'bg-white rounded-xl border shadow-sm p-3 flex flex-col gap-2';
       const ph = document.createElement('div');
-      ph.className = 'w-full aspect-square rounded-lg bg-slate-100 overflow-hidden grid place-items-center' + (x.fotoUrl ? ' cursor-pointer' : '');
+      ph.className = 'w-full aspect-square rounded-lg bg-slate-100 overflow-hidden grid place-items-center' + (x.fotoUrl && canDel ? ' cursor-pointer' : '');
       psImg_(ph, x.fotoUrl, x.nama, 240);
-      if (x.fotoUrl) { ph.title = 'Klik untuk memperbesar / menghapus'; ph.onclick = () => psBukaHapus(x.nisn); }
+      if (x.fotoUrl && canDel) { ph.title = 'Klik untuk memperbesar / menghapus'; ph.onclick = () => psBukaHapus(p, x.nisn); }
       card.appendChild(ph);
       const nm = document.createElement('p');
       nm.className = 'text-xs font-bold text-slate-800 leading-snug break-words'; nm.textContent = x.nama;
@@ -4380,17 +4398,19 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       meta.className = 'text-[11px] text-slate-500'; meta.textContent = 'NISN ' + x.nisn + ' · ' + [x.kelas, x.jurusan].filter(Boolean).join(' ');
       card.appendChild(meta);
       if (x.fotoUrl) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'mt-auto w-full text-[11px] font-bold text-rose-600 border border-rose-200 rounded-lg py-1.5 hover:bg-rose-50';
-        b.innerHTML = '<i class="fas fa-trash mr-1"></i>Hapus foto';
-        b.onclick = () => psBukaHapus(x.nisn);
-        card.appendChild(b);
+        if (canDel) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'mt-auto w-full text-[11px] font-bold text-rose-600 border border-rose-200 rounded-lg py-1.5 hover:bg-rose-50';
+          b.innerHTML = '<i class="fas fa-trash mr-1"></i>Hapus foto';
+          b.onclick = () => psBukaHapus(p, x.nisn);
+          card.appendChild(b);
+        }
       } else {
         const t = document.createElement('p');
         if (x.alasan) {
           t.className = 'mt-auto text-[10.5px] leading-snug text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2';
-          t.textContent = 'Dihapus admin' + (x.tgl ? ' (' + x.tgl + ')' : '') + ': ' + x.alasan;
+          t.textContent = 'Dihapus oleh ' + (x.oleh || 'Admin') + (x.tgl ? ' (' + x.tgl + ')' : '') + ': ' + x.alasan;
         } else {
           t.className = 'mt-auto text-[11px] text-center text-slate-400 font-semibold py-1.5';
           t.textContent = 'Belum ada foto';
@@ -4399,53 +4419,60 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       }
       return card;
     }
-    function renderProfilSiswa_(reset) {
-      const grid = document.getElementById('profilSiswaGrid'), info = document.getElementById('profilSiswaInfo'), more = document.getElementById('profilSiswaMoreWrap');
+    function renderProfilSiswa_(p, reset) {
+      const c = psC_(p);
+      const grid = document.getElementById(p + 'Grid'), info = document.getElementById(p + 'Info'), more = document.getElementById(p + 'More');
       if (!grid) return;
-      if (reset) _psShown = PS_PAGE;
-      const list = psFiltered_();
-      const ada = _psData.filter(x => x.fotoUrl).length;
+      if (reset) c.shown = PS_PAGE;
+      const list = psFiltered_(p);
+      const ada = c.data.filter(x => x.fotoUrl).length;
       grid.textContent = '';
-      list.slice(0, _psShown).forEach(x => grid.appendChild(psCard_(x)));
+      list.slice(0, c.shown).forEach(x => grid.appendChild(psCard_(p, x)));
       if (!list.length) {
         const e = document.createElement('p');
         e.className = 'col-span-full text-center text-sm text-slate-400 py-10';
         e.textContent = 'Tidak ada siswa yang cocok dengan filter.';
         grid.appendChild(e);
       }
-      info.textContent = 'Menampilkan ' + Math.min(_psShown, list.length) + ' dari ' + list.length + ' siswa · total ' + _psData.length + ' (' + ada + ' sudah ada foto, ' + (_psData.length - ada) + ' belum).';
-      more.classList.toggle('hidden', list.length <= _psShown);
+      info.textContent = 'Menampilkan ' + Math.min(c.shown, list.length) + ' dari ' + list.length + ' siswa · total ' + c.data.length + ' (' + ada + ' sudah ada foto, ' + (c.data.length - ada) + ' belum).';
+      more.classList.toggle('hidden', list.length <= c.shown);
     }
-    function loadProfilSiswa() {
-      const info = document.getElementById('profilSiswaInfo');
+    function loadProfilSiswa(p) {
+      p = p || 'ps';
+      psBuild_(p);
+      const c = psC_(p);
+      const info = document.getElementById(p + 'Info');
       if (info) info.textContent = 'Memuat...';
       showStatusBar('Memuat profil siswa...', 50);
-      runServer('getFotoProfilSiswa', [psV_('psKelas') || 'ALL', psV_('psJurusan') || 'ALL'], { retries: 2 }).then(res => {
+      runServer('getFotoProfilSiswa', [psV_(p, 'Kelas') || 'ALL', psV_(p, 'Jurusan') || 'ALL'], { retries: 2 }).then(res => {
         hideStatusBar();
         if (!res || !res.success) { if (info) info.textContent = 'Gagal memuat data.'; return; }
-        _psData = res.siswa || [];
-        _psOpsi = res.alasan || [];
-        renderProfilSiswa_(true);
+        c.data = res.siswa || [];
+        c.opsi = res.alasan || [];
+        renderProfilSiswa_(p, true);
       }, err => {
         hideStatusBar();
         if (info) info.textContent = 'Gagal memuat: ' + ((err && err.message) || err);
       });
     }
+    /* --- hapus foto (semua peran; peran penghapus ditentukan server dari sesi) --- */
     function psTeksAlasan_() {
-      const kode = psV_('psAlasan');
+      const kode = document.getElementById('psAlasan').value;
       if (!kode) return '';
-      if (kode === 'lainnya') return psV_('psAlasanLain').replace(/\s+/g, ' ').trim();
-      const o = _psOpsi.find(a => a.kode === kode);
+      if (kode === 'lainnya') return document.getElementById('psAlasanLain').value.replace(/\s+/g, ' ').trim();
+      const o = psC_(_psP).opsi.find(a => a.kode === kode);
       return o ? o.teks : '';
     }
     function psAlasanChange() {
-      document.getElementById('psAlasanLainWrap').classList.toggle('hidden', psV_('psAlasan') !== 'lainnya');
+      document.getElementById('psAlasanLainWrap').classList.toggle('hidden', document.getElementById('psAlasan').value !== 'lainnya');
       const t = psTeksAlasan_();
-      document.getElementById('psPreview').textContent = 'Foto profil Anda dihapus oleh admin.' + (t ? ' Alasan: ' + t + '.' : ' Alasan: (pilih alasan terlebih dahulu).') + ' Silakan ambil selfie baru dengan wajah tampak penuh.';
-      const er = document.getElementById('psModalErr'); er.classList.add('hidden');
+      document.getElementById('psPreview').textContent = 'Foto profil Anda dihapus oleh ' + psOleh_() + '.' + (t ? ' Alasan: ' + t + '.' : ' Alasan: (pilih alasan terlebih dahulu).') + ' Silakan ambil selfie baru dengan wajah tampak penuh.';
+      document.getElementById('psModalErr').classList.add('hidden');
     }
-    function psBukaHapus(nisn) {
-      const x = _psData.find(a => String(a.nisn) === String(nisn));
+    function psBukaHapus(p, nisn) {
+      _psP = p;
+      const c = psC_(p);
+      const x = c.data.find(a => String(a.nisn) === String(nisn));
       if (!x || !x.fotoUrl) return;
       _psSel = x;
       psImg_(document.getElementById('psModalFoto'), x.fotoUrl, x.nama, 240);
@@ -4454,7 +4481,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const sel = document.getElementById('psAlasan');
       sel.innerHTML = '';
       const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '— Pilih alasan —'; sel.appendChild(o0);
-      _psOpsi.forEach(a => { const o = document.createElement('option'); o.value = a.kode; o.textContent = a.teks; sel.appendChild(o); });
+      c.opsi.forEach(a => { const o = document.createElement('option'); o.value = a.kode; o.textContent = a.teks; sel.appendChild(o); });
       document.getElementById('psAlasanLain').value = '';
       document.getElementById('psBtnHapus').disabled = false; document.getElementById('psBtnBatal').disabled = false;
       psAlasanChange();
@@ -4463,9 +4490,9 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     function psTutupHapus() { if (_psBusy) return; document.getElementById('profilHapusModal').classList.add('hidden'); _psSel = null; }
     function psKonfirmasiHapus() {
       if (_psBusy || !_psSel) return;
-      const kode = psV_('psAlasan'), er = document.getElementById('psModalErr');
+      const kode = document.getElementById('psAlasan').value, er = document.getElementById('psModalErr');
       if (!kode) { er.textContent = 'Pilih alasan penghapusan terlebih dahulu.'; er.classList.remove('hidden'); return; }
-      const lain = psV_('psAlasanLain').trim();
+      const lain = document.getElementById('psAlasanLain').value.trim();
       if (kode === 'lainnya' && lain.length < 5) { er.textContent = 'Tuliskan alasan minimal 5 karakter.'; er.classList.remove('hidden'); return; }
       const x = _psSel;
       _psBusy = true;
@@ -4473,19 +4500,23 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       bh.disabled = true; bb.disabled = true;
       showStatusBar('Menghapus foto profil...', 50);
       const selesai = () => { _psBusy = false; bh.disabled = false; bb.disabled = false; hideStatusBar(); };
-      runServer('hapusFotoProfilSiswa', [x.nisn, kode, lain], { retries: 0 }).then(res => {
+      runServer('hapusFotoProfilSiswa', [x.nisn, kode, lain], { retries: 0, timeout: 90000 }).then(res => {
         selesai();
         if (res && res.success) {
-          x.fotoUrl = ''; x.alasan = res.alasan || psTeksAlasan_(); x.tgl = res.tgl || '';
+          x.fotoUrl = ''; x.alasan = res.alasan || psTeksAlasan_(); x.tgl = res.tgl || ''; x.oleh = res.oleh || psOleh_();
           document.getElementById('profilHapusModal').classList.add('hidden'); _psSel = null;
-          renderProfilSiswa_(false);
+          renderProfilSiswa_(_psP, false);
           alert(res.message || 'Foto profil dihapus.');
+        } else if (res && res.already) {
+          document.getElementById('profilHapusModal').classList.add('hidden'); _psSel = null;
+          alert(res.message);
+          loadProfilSiswa(_psP);
         } else {
           er.textContent = (res && res.message) || 'Gagal menghapus foto.'; er.classList.remove('hidden');
         }
       }, err => {
         selesai();
-        er.textContent = 'Gagal menghapus: ' + ((err && err.message) || err); er.classList.remove('hidden');
+        er.textContent = 'Tidak ada balasan dari server. Penghapusan mungkin sudah berhasil; tutup jendela ini lalu tekan "Muat ulang" untuk memastikan. Detail: ' + ((err && err.message) || err); er.classList.remove('hidden');
       });
     }
 
@@ -4530,7 +4561,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       else if (isReset) loadAutoCleanSettings();
       else if (isTampilan) loadThemeSettingsAdmin();
       else if (isAkun) loadAdminAccountForm();
-      else if (isProfil) loadProfilSiswa();
+      else if (isProfil) loadProfilSiswa('ps');
     }
 
     /* ===== HARI SEKOLAH & HARI LIBUR (admin, tab Setting) ===== */
@@ -5519,7 +5550,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         if (sr) sr.className = onM ? off : on;
         if (sm) sm.className = onM ? on : off;
       }
-      const tabIds = ['waliTabInput', 'waliTabRekap', 'waliTabMatrix', 'waliTabBuktiFoto', 'waliTabSiswa', 'waliTabAkun', 'waliTabBarcode', 'waliTabVerifBarcode', 'waliTabRekapAbsensi', 'waliTabKeterangan'];
+      const tabIds = ['waliTabInput', 'waliTabRekap', 'waliTabMatrix', 'waliTabBuktiFoto', 'waliTabSiswa', 'waliTabAkun', 'waliTabBarcode', 'waliTabVerifBarcode', 'waliTabRekapAbsensi', 'waliTabKeterangan', 'waliTabProfil'];
       tabIds.forEach((id, idx) => {
         let active = false;
         if (currentUser && currentUser.role === 'Sekretaris') {
@@ -5534,7 +5565,8 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
                    (tab === 'barcode' && idx === 6) ||
                    (tab === 'verifbarcode' && idx === 7) ||
                    (tab === 'rekapabsensi' && idx === 8) ||
-                   (tab === 'keterangan' && idx === 9);
+                   (tab === 'keterangan' && idx === 9) ||
+                   (tab === 'profil' && idx === 10);
         }
         document.getElementById(id).classList.toggle('hidden', !active);
       });
@@ -5542,7 +5574,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const activeClass = "tab-btn tab-btn-active";
       const inactiveClass = "tab-btn";
 
-      ['tabInputBtn', 'tabRekapBtn', 'tabMatrixBtn', 'tabRekapGabungBtn', 'tabBuktiFotoBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn', 'tabRekapAbsensiBtn', 'tabKeteranganBtn'].forEach(btnId => {
+      ['tabInputBtn', 'tabRekapBtn', 'tabMatrixBtn', 'tabRekapGabungBtn', 'tabBuktiFotoBtn', 'tabSiswaBtn', 'tabAkunBtn', 'tabBarcodeBtn', 'tabVerifBarcodeBtn', 'tabRekapAbsensiBtn', 'tabKeteranganBtn', 'tabProfilBtn'].forEach(btnId => {
         const el = document.getElementById(btnId);
         if (el) {
           const match = (btnId.replace('tab', '').replace('Btn', '').toLowerCase() === btnKey);
@@ -5553,6 +5585,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       refreshWaliBarcodeTabs();
       if (tab === 'barcode') startBarcodeTab(); else stopBarcodeTab();
       if (tab === 'verifbarcode') initVerifBarcodeTab();
+      if (tab === 'profil') loadProfilSiswa('pw');   // Revisi 119
 
       if (tab === 'rekap') {
         // Selalu muat ulang dari server: server membaca pengaturan terbaru (saklar nilai) setiap rekap dibuka.
@@ -5591,7 +5624,10 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const isBuktiFoto = (sec === 'buktifoto');
       const isAkun = (sec === 'akun');
       const isKet = (sec === 'keterangan');
+      const isProfil = (sec === 'profil');   // Revisi 119
 
+      document.getElementById('kepsekSectionProfil').classList.toggle('hidden', !isProfil);
+      document.getElementById('kepsekTabProfilBtn').className = isProfil ? "tab-btn tab-btn-active" : "tab-btn";
       document.getElementById('kepsekSectionKeterangan').classList.toggle('hidden', !isKet);
       document.getElementById('kepsekTabKeteranganBtn').className = isKet ? "tab-btn tab-btn-active" : "tab-btn";
       document.getElementById('kepsekSectionMatrix').classList.toggle('hidden', !isMatrix);
@@ -5607,6 +5643,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
 
       if (isMatrix) loadKepsekDefaultSummary();
       else if (isAkun) loadKepsekAccountForm();
+      else if (isProfil) loadProfilSiswa('pk');
     }
 
     function loadWaliPhotoLogs() {
