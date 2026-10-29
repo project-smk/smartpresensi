@@ -270,6 +270,29 @@
     body .tab-btn:not(:disabled):active { transform: none; }
 
     /* Kartu nilai presensi (halaman siswa) */
+    /* Revisi 123: nilai & predikat presensi menyatu di kartu profil siswa (tampil hanya bila saklar admin aktif) */
+    .fp-nilai { --nc: #0f766e; --nc-soft: #ccfbf1; margin: 16px 16px 0; padding: 12px 14px 12px; border-radius: 14px; border: 1px solid rgb(15 23 42 / .06); background: linear-gradient(135deg, var(--nc-soft) 0%, #ffffff 115%); position: relative; overflow: hidden; }
+    .fp-nilai::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--nc); }
+    .fp-nilai.p-A { --nc: #059669; --nc-soft: #d1fae5; }
+    .fp-nilai.p-B { --nc: #0369a1; --nc-soft: #e0f2fe; }
+    .fp-nilai.p-C { --nc: #b45309; --nc-soft: #fef3c7; }
+    .fp-nilai.p-D { --nc: #be123c; --nc-soft: #ffe4e6; }
+    .fp-nilai-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding-left: 4px; }
+    .fp-nilai-label { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--nc); display: inline-flex; align-items: center; gap: .4rem; }
+    .fp-nilai-bulan { font-size: 11px; font-weight: 700; color: var(--nc); opacity: .85; white-space: nowrap; }
+    .fp-nilai-main { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-top: 6px; padding-left: 4px; }
+    .fp-nilai-score { display: flex; align-items: baseline; gap: 4px; min-width: 0; }
+    .fp-nilai-num { font-family: var(--font-display); font-size: 2.75rem; line-height: 1; font-weight: 800; letter-spacing: -.03em; color: #0f172a; }
+    .fp-nilai-max { font-size: 12px; font-weight: 700; color: #94a3b8; }
+    .fp-nilai-pred { display: flex; align-items: center; gap: .6rem; flex: none; }
+    .fp-nilai-pred-label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
+    .fp-nilai-pred-huruf { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; background: var(--nc); color: #fff; font-family: var(--font-display); font-size: 1.6rem; font-weight: 800; box-shadow: 0 0 0 4px var(--nc-soft), 0 8px 16px -8px var(--nc); }
+    .fp-nilai-bar { height: 7px; border-radius: 999px; background: rgb(15 23 42 / .08); margin: 12px 0 0 4px; overflow: hidden; }
+    .fp-nilai-bar > i { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--nc); transition: width .8s cubic-bezier(.2,.7,.2,1); }
+    .fp-nilai-note { margin: 6px 0 0 4px; font-size: 10.5px; color: #94a3b8; }
+    .fp-nilai-kosong { margin: 8px 0 0 4px; font-size: 12.5px; color: #64748b; }
+    @media (max-width: 380px) { .fp-nilai-num { font-size: 2.3rem; } .fp-nilai-pred-label { display: none; } }
+    @media (prefers-reduced-motion: reduce) { .fp-nilai-bar > i { transition: none; } }
     .nilai-card { --nc: #0f766e; --nc-soft: #ccfbf1; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; overflow: hidden; box-shadow: 0 1px 2px rgb(20 27 46 / .04); }
     .nilai-card.p-A { --nc: #059669; --nc-soft: #d1fae5; }
     .nilai-card.p-B { --nc: #0369a1; --nc-soft: #e0f2fe; }
@@ -710,6 +733,13 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
             <p id="studentFotoMeta" class="fp-meta"></p>
           </div>
         </div>
+        <div id="studentNilaiCard" class="hidden fp-nilai" aria-live="polite">
+          <div class="fp-nilai-top">
+            <span class="fp-nilai-label"><i class="fas fa-chart-line"></i>Nilai presensi bulan ini</span>
+            <span id="studentNilaiBulan" class="fp-nilai-bulan"></span>
+          </div>
+          <div id="studentNilaiBody"></div>
+        </div>
         <p id="studentFotoHint" class="fp-hint"></p>
         <div id="fpHapusNotice" class="hidden mx-4 mt-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-xs text-justify" role="alert"></div>
         <div id="fpActionsPick" class="fp-actions">
@@ -726,13 +756,6 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         <i class="fas fa-lock mr-1"></i> Foto profil wajib diambil langsung dari kamera dengan wajah tampak penuh sebelum Anda bisa melakukan presensi. Gunakan kartu foto di atas, lalu tekan Simpan foto.
       </div>
 
-      <div id="studentNilaiCard" class="hidden nilai-card">
-        <div class="nilai-head">
-          <span class="nilai-title"><i class="fas fa-chart-line"></i>Nilai presensi bulan ini</span>
-          <span id="studentNilaiBulan" class="nilai-bulan"></span>
-        </div>
-        <div id="studentNilaiBody" class="nilai-body"></div>
-      </div>
       <div id="studentStatusCard" class="hidden p-4 rounded-xl border flex items-center justify-between transition-all">
         <div class="flex items-center space-x-3">
           <div id="statusBadgeIcon" class="w-10 h-10 rounded-full flex items-center justify-center text-lg"></div>
@@ -2848,6 +2871,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       dcGen++; dcClear_();   // cache laporan di perangkat tidak boleh terbawa ke akun lain
       currentUser = null;
       window._turunKelas = false;   // Revisi 121
+      { const nc = document.getElementById('studentNilaiCard'); if (nc) { nc.classList.add('hidden'); delete nc.dataset.owner; } }   // Revisi 123
       appCache = { attendanceData: null, monthlyReportData: null, matrixReportData: null, studentsData: null };
       document.getElementById('userInfo').classList.add('hidden');
       ['adminDashboard', 'waliDashboard', 'studentDashboard', 'kepsekDashboard', 'barcodeDashboard'].forEach(id => {
@@ -4034,36 +4058,33 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
     function loadStudentNilai() {
       const card = document.getElementById('studentNilaiCard');
       if (!card) return;
-      card.classList.add('hidden');
-      runServer('getMyNilaiPresensi', [], { retries: 1 }).then(renderStudentNilai, () => {});
+      const owner = String((currentUser && currentUser.nisn) || '');
+      if (card.dataset.owner !== owner) card.classList.add('hidden');   // akun berbeda di perangkat yang sama: jangan tampilkan nilai lama; muat ulang tanpa berkedip bila akun sama
+      runServer('getMyNilaiPresensi', [], { retries: 1 }).then(res => { card.dataset.owner = owner; renderStudentNilai(res); }, () => {});
     }
     function renderStudentNilai(res) {
       const card = document.getElementById('studentNilaiCard'), body = document.getElementById('studentNilaiBody'), bln = document.getElementById('studentNilaiBulan');
       if (!card || !body) return;
-      if (!res || res.tampil !== true) { card.classList.add('hidden'); return; }
-      card.className = 'nilai-card';
+      if (!res || res.tampil !== true) { card.classList.add('hidden'); return; }   // saklar admin mati -> tidak tampil
+      card.className = 'fp-nilai';
       if (bln) {
         const NB = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
         const m = /^(\d{4})-(\d{2})/.exec(res.bulan || '');
         bln.textContent = m ? NB[parseInt(m[2], 10) - 1] + ' ' + m[1] : '';
       }
       if (res.nilai === null || res.nilai === undefined) {
-        body.innerHTML = '<p class="nilai-kosong">Belum ada data penilaian bulan ini.</p>';
+        body.innerHTML = '<p class="fp-nilai-kosong">Belum ada data penilaian bulan ini.</p>';
       } else {
         const pred = ['A', 'B', 'C', 'D'].indexOf(res.pred) >= 0 ? res.pred : 'D';
         card.classList.add('p-' + pred);
         const pct = Math.max(0, Math.min(100, Number(res.nilai) || 0));
-        const stat = (cls, n, label) => '<div class="nilai-stat s-' + cls + (n ? '' : ' s-zero') + '"><b>' + n + '</b><span>' + label + '</span></div>';
         body.innerHTML =
-          '<div class="nilai-main">' +
-            '<span class="nilai-num">' + escH_(res.nilai) + '</span>' +
-            '<div class="nilai-pred"><span class="nilai-pred-label">Predikat</span><span class="nilai-pred-huruf">' + escH_(pred) + '</span></div>' +
+          '<div class="fp-nilai-main">' +
+            '<div class="fp-nilai-score"><span class="fp-nilai-num">' + escH_(res.nilai) + '</span><span class="fp-nilai-max">/100</span></div>' +
+            '<div class="fp-nilai-pred"><span class="fp-nilai-pred-label">Predikat</span><span class="fp-nilai-pred-huruf">' + escH_(pred) + '</span></div>' +
           '</div>' +
-          '<div class="nilai-bar"><i id="studentNilaiFill"></i></div>' +
-          '<div class="nilai-stats">' +
-            stat('h', res.h, 'Hadir') + stat('t', res.t, 'Terlambat') + stat('i', res.i, 'Izin') + stat('s', res.s, 'Sakit') + stat('a', res.a + res.ao, 'Alpa') +
-          '</div>' +
-          '<p class="nilai-note">Nilai sementara, diperbarui berkala.</p>';
+          '<div class="fp-nilai-bar"><i id="studentNilaiFill"></i></div>' +
+          '<p class="fp-nilai-note">Nilai sementara, diperbarui berkala.</p>';
         const fill = document.getElementById('studentNilaiFill');
         if (fill) requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = pct + '%'; }));
       }
