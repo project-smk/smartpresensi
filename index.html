@@ -711,6 +711,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           </div>
         </div>
         <p id="studentFotoHint" class="fp-hint"></p>
+        <div id="fpHapusNotice" class="hidden mx-4 mt-3 p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-xs text-justify" role="alert"></div>
         <div id="fpActionsPick" class="fp-actions">
           <button type="button" id="btnFotoSelfie" onclick="fpWarmup_();document.getElementById('fotoProfilInputSelfie').click()" class="fp-btn fp-btn-main"><i class="fas fa-camera-rotate"></i><span>Ambil selfie wajah penuh</span></button>
         </div>
@@ -868,6 +869,9 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       <div class="tab-bar">
         <button id="adminTabUserBtn" onclick="switchAdminTab('users')" class="tab-btn tab-btn-active">
           <i class="fas fa-users-cog mr-1.5"></i>Kelola Akun
+        </button>
+        <button id="adminTabProfilBtn" onclick="switchAdminTab('profil')" class="tab-btn">
+          <i class="fas fa-id-badge mr-1.5"></i>Profil Siswa
         </button>
         <button id="adminTabVerifikasiBtn" onclick="switchAdminTab('verifikasi')" class="tab-btn">
           <i class="fas fa-check-double mr-1.5"></i>Verifikasi
@@ -1190,6 +1194,34 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
           <p class="text-xs text-slate-500">Di bawah batas C = predikat D. Nilai bulanan adalah rata-rata poin pada hari yang dihitung. PKL dan PJJ bersifat netral: tidak menambah poin dan tidak masuk pembagi. Siswa tanpa catatan pada hari yang dihitung dan sudah lewat dihitung Alpa. Aturan hari yang dihitung (hari sekolah, hari libur, dan penilaian per kelas bila libur belum dipilih) dijelaskan di bagian Hari Sekolah &amp; Hari Libur di atas.</p>
           <button type="button" onclick="saveNilaiSettings()" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-xs font-bold shadow"><i class="fas fa-save mr-1"></i> Simpan Pengaturan Penilaian</button>
         </div>
+        </div>
+      </div>
+
+      <!-- Admin Tab Profil Siswa (Revisi 118) -->
+      <div id="adminTabProfil" class="hidden space-y-4">
+        <div class="bg-white p-5 rounded-xl shadow-sm border space-y-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800"><i class="fas fa-id-badge text-primary-600 mr-2"></i>Profil Siswa</h2>
+            <p class="text-xs text-slate-500">Lihat foto profil siswa. Foto yang tidak sesuai bisa dihapus dengan memilih alasan; siswa akan melihat alasannya dan diminta mengambil selfie baru.</p>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Kelas</label>
+              <select id="psKelas" onchange="loadProfilSiswa()" class="w-full border px-3 py-2 rounded-lg text-xs bg-white"><option value="ALL">Semua Kelas</option><option value="X">X</option><option value="XI">XI</option><option value="XII">XII</option></select></div>
+            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Jurusan</label>
+              <select id="psJurusan" onchange="loadProfilSiswa()" class="w-full border px-3 py-2 rounded-lg text-xs bg-white"><option value="ALL">Semua Jurusan</option><option value="AKL">AKL</option><option value="MPLB">MPLB</option><option value="TJKT">TJKT</option></select></div>
+            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Status Foto</label>
+              <select id="psStatus" onchange="renderProfilSiswa_(true)" class="w-full border px-3 py-2 rounded-lg text-xs bg-white"><option value="ALL">Semua</option><option value="ADA">Sudah ada foto</option><option value="BELUM">Belum ada foto</option><option value="DIHAPUS">Dihapus admin (belum diganti)</option></select></div>
+            <div><label class="block text-[11px] font-bold text-slate-600 mb-1">Cari Nama / NISN</label>
+              <input type="text" id="psCari" oninput="psCariDebounce_()" placeholder="Ketik nama atau NISN" class="w-full border px-3 py-2 rounded-lg text-xs bg-white"></div>
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <p id="profilSiswaInfo" class="text-xs text-slate-500">Memuat...</p>
+            <button type="button" onclick="loadProfilSiswa()" class="text-xs font-bold text-primary-700 border border-primary-200 px-3 py-1.5 rounded-lg hover:bg-primary-50"><i class="fas fa-rotate mr-1"></i>Muat ulang</button>
+          </div>
+        </div>
+        <div id="profilSiswaGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3"></div>
+        <div id="profilSiswaMoreWrap" class="hidden text-center">
+          <button type="button" onclick="psTampilLagi_()" class="px-4 py-2 rounded-lg border text-xs font-bold text-slate-700 bg-white hover:bg-slate-50">Tampilkan lebih banyak</button>
         </div>
       </div>
 
@@ -2175,6 +2207,36 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         </div>
         <div class="flex justify-end space-x-2 pt-2"><button type="button" onclick="closeUserModal()" class="px-4 py-2 border rounded text-xs">Batal</button><button type="submit" class="px-4 py-2 bg-primary-600 text-white rounded text-xs">Simpan</button></div>
       </form>
+    </div>
+  </div>
+
+  <div id="profilHapusModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-4 max-h-[92vh] overflow-y-auto">
+      <h3 class="text-base font-bold text-slate-800"><i class="fas fa-trash text-rose-500 mr-2"></i>Hapus Foto Profil</h3>
+      <div class="flex items-center gap-3">
+        <div id="psModalFoto" class="w-24 h-24 shrink-0 rounded-xl bg-slate-100 overflow-hidden grid place-items-center"></div>
+        <div class="min-w-0">
+          <p id="psModalNama" class="font-bold text-sm text-slate-800 break-words"></p>
+          <p id="psModalMeta" class="text-xs text-slate-500"></p>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-700 mb-1">Alasan penghapusan <span class="text-rose-600">*</span></label>
+        <select id="psAlasan" onchange="psAlasanChange()" class="w-full border px-3 py-2 rounded-lg text-sm bg-white"></select>
+      </div>
+      <div id="psAlasanLainWrap" class="hidden">
+        <label class="block text-xs font-bold text-slate-700 mb-1">Tulis alasan (maks. 120 karakter)</label>
+        <textarea id="psAlasanLain" rows="2" maxlength="120" oninput="psAlasanChange()" class="w-full border px-3 py-2 rounded-lg text-sm bg-white" placeholder="Contoh: Foto tidak sesuai ketentuan sekolah"></textarea>
+      </div>
+      <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+        <p class="text-[11px] font-bold text-amber-800 mb-1"><i class="fas fa-eye mr-1"></i>Pesan yang akan dilihat siswa</p>
+        <p id="psPreview" class="text-xs text-amber-900 text-justify"></p>
+      </div>
+      <p id="psModalErr" class="hidden text-xs text-rose-600 font-semibold"></p>
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" id="psBtnBatal" onclick="psTutupHapus()" class="px-4 py-2 border rounded-lg text-xs font-semibold">Batal</button>
+        <button type="button" id="psBtnHapus" onclick="psKonfirmasiHapus()" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold"><i class="fas fa-trash mr-1"></i>Hapus Foto</button>
+      </div>
     </div>
   </div>
 
@@ -3626,6 +3688,33 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       };
       img.src = 'https://lh3.googleusercontent.com/d/' + id + '=s' + size;
     }
+    /* Revisi 118: pemberitahuan bila foto profil dihapus admin (alasan dari server). */
+    function fpRenderHapusNotice_(user, has) {
+      const box = document.getElementById('fpHapusNotice');
+      if (!box) return;
+      const alasan = user && user.fotoHapusAlasan ? String(user.fotoHapusAlasan) : '';
+      if (has || !alasan) { box.classList.add('hidden'); box.textContent = ''; return; }
+      box.textContent = '';
+      const h = document.createElement('p'); h.className = 'font-bold mb-1';
+      h.textContent = 'Foto profil Anda dihapus oleh admin' + (user.fotoHapusTgl ? ' (' + user.fotoHapusTgl + ')' : '') + '.';
+      const a = document.createElement('p'); a.textContent = 'Alasan: ' + alasan + '.';
+      const c = document.createElement('p'); c.className = 'mt-1'; c.textContent = 'Silakan ambil selfie baru dengan wajah tampak penuh agar bisa presensi kembali.';
+      box.appendChild(h); box.appendChild(a); box.appendChild(c);
+      box.classList.remove('hidden');
+    }
+    /* Revisi 118: samakan status foto di browser dengan server (tanpa panggilan tambahan; ikut balasan status presensi hari ini). */
+    function fpSyncDariServer_(res) {
+      try {
+        if (!res || typeof res.fotoProfil !== 'string' || !currentUser || currentUser.role !== 'Siswa') return;
+        if (_fpPending) return;   // jangan ganggu siswa yang sedang memilih foto
+        const baru = res.fotoProfil || '', alasan = res.fotoHapusAlasan || '', tgl = res.fotoHapusTgl || '';
+        if ((currentUser.fotoProfil || '') === baru && (currentUser.fotoHapusAlasan || '') === alasan) return;
+        currentUser.fotoProfil = baru; currentUser.fotoHapusAlasan = alasan; currentUser.fotoHapusTgl = tgl;
+        saveSession(currentUser);
+        fpFillAvatar_(document.getElementById('userAvatarInitial'), currentUser.fotoProfil, currentUser.nama, 64);
+        renderStudentFotoCard_(currentUser);
+      } catch (e) {}
+    }
     function fpSetHint_(t) { const e = document.getElementById('studentFotoHint'); if (e) e.textContent = t; }
     function fpButtons_(pending) {
       const g = id => document.getElementById(id);
@@ -3659,6 +3748,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const has = !!fpDriveId_(user.fotoProfil);
       fpSetHint_(msg || (has ? 'Foto profil tersimpan. Untuk menggantinya, ambil selfie baru langsung dari kamera. Pastikan wajah tampak penuh.' : (fpWajib_(user) ? 'Belum ada foto profil. WAJIB diambil sebelum presensi: ambil selfie langsung dari kamera dan pastikan wajah tampak penuh.' : 'Belum ada foto profil. Ambil selfie langsung dari kamera dan pastikan wajah tampak penuh.')));
       fpButtons_(false);
+      fpRenderHapusNotice_(user, has);   // Revisi 118
       fpApplyGate_(user);   // Revisi 111
     }
     async function fpLoadBitmap_(file) {
@@ -3887,6 +3977,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         done();
         if (res && res.success) {
           currentUser.fotoProfil = res.fotoUrl;
+          currentUser.fotoHapusAlasan = ''; currentUser.fotoHapusTgl = '';   // Revisi 118
           saveSession(currentUser);
           fpFillAvatar_(document.getElementById('userAvatarInitial'), currentUser.fotoProfil, currentUser.nama, 64);
           renderStudentFotoCard_(currentUser, 'Foto profil berhasil disimpan.');
@@ -3975,7 +4066,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const todayStr = document.getElementById('studentAttendanceDate').value;
       if (!nisn || !todayStr) return;
 
-      runServer('getStudentTodayAttendance', [nisn, todayStr], { retries: 2 }).then(renderStudentStatusToday, () => {
+      runServer('getStudentTodayAttendance', [nisn, todayStr], { retries: 2 }).then(res => { fpSyncDariServer_(res); renderStudentStatusToday(res); }, () => {
         // Gagal memuat status: jangan biarkan tombol menggantung. Server tetap menolak presensi ganda.
         hideStatusBar();
         const b = document.getElementById('btnSubmitStudent');
@@ -4179,7 +4270,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
               }
             } else if (res && res.needFotoProfil) {
               // Revisi 111: server menolak karena foto profil belum ada (mis. sesi lama / foto dihapus admin)
-              if (currentUser) { currentUser.fotoProfil = ''; saveSession(currentUser); renderStudentFotoCard_(currentUser, res.message); }
+              if (currentUser) { currentUser.fotoProfil = ''; currentUser.fotoHapusAlasan = res.fotoHapusAlasan || ''; currentUser.fotoHapusTgl = res.fotoHapusTgl || ''; saveSession(currentUser); renderStudentFotoCard_(currentUser, res.message); }
               alert(res.message);
               fpScrollKeKartu_();
             } else if (res && res.relogin) {
@@ -4241,6 +4332,163 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       return R * c;
     }
 
+    /* ===== PROFIL SISWA (ADMIN) — Revisi 118 =====
+       Daftar foto profil siswa dengan filter kelas/jurusan (server) + status/pencarian (browser).
+       Hapus foto = pilih alasan dari daftar; alasan tersimpan di sheet dan tampil di halaman siswa. */
+    let _psData = [], _psOpsi = [], _psShown = 0, _psSel = null, _psBusy = false, _psTimer = null;
+    const PS_PAGE = 40;
+    function psV_(id) { const e = document.getElementById(id); return e ? e.value : ''; }
+    function psImg_(box, url, nama, size) {
+      box.textContent = '';
+      const ini = document.createElement('span');
+      ini.className = 'text-3xl font-extrabold text-slate-400';
+      ini.textContent = (nama || '?').trim().charAt(0).toUpperCase();
+      box.appendChild(ini);
+      const id = fpDriveId_(url);
+      if (!id) return;
+      const img = new Image();
+      let tried = 0;
+      img.alt = ''; img.decoding = 'async'; img.referrerPolicy = 'no-referrer';
+      img.className = 'w-full h-full object-cover';
+      img.onload = function () { box.textContent = ''; box.appendChild(img); };
+      img.onerror = function () { if (tried++ === 0) img.src = 'https://drive.google.com/thumbnail?id=' + id + '&sz=w' + size; };
+      img.src = 'https://lh3.googleusercontent.com/d/' + id + '=s' + size;
+    }
+    function psCariDebounce_() { clearTimeout(_psTimer); _psTimer = setTimeout(() => renderProfilSiswa_(true), 250); }
+    function psTampilLagi_() { _psShown += PS_PAGE; renderProfilSiswa_(false); }
+    function psFiltered_() {
+      const q = psV_('psCari').trim().toLowerCase(), st = psV_('psStatus');
+      return _psData.filter(x => {
+        if (st === 'ADA' && !x.fotoUrl) return false;
+        if (st === 'BELUM' && x.fotoUrl) return false;
+        if (st === 'DIHAPUS' && (x.fotoUrl || !x.alasan)) return false;
+        return !q || (String(x.nama) + ' ' + String(x.nisn)).toLowerCase().indexOf(q) >= 0;
+      });
+    }
+    function psCard_(x) {
+      const card = document.createElement('div');
+      card.className = 'bg-white rounded-xl border shadow-sm p-3 flex flex-col gap-2';
+      const ph = document.createElement('div');
+      ph.className = 'w-full aspect-square rounded-lg bg-slate-100 overflow-hidden grid place-items-center' + (x.fotoUrl ? ' cursor-pointer' : '');
+      psImg_(ph, x.fotoUrl, x.nama, 240);
+      if (x.fotoUrl) { ph.title = 'Klik untuk memperbesar / menghapus'; ph.onclick = () => psBukaHapus(x.nisn); }
+      card.appendChild(ph);
+      const nm = document.createElement('p');
+      nm.className = 'text-xs font-bold text-slate-800 leading-snug break-words'; nm.textContent = x.nama;
+      card.appendChild(nm);
+      const meta = document.createElement('p');
+      meta.className = 'text-[11px] text-slate-500'; meta.textContent = 'NISN ' + x.nisn + ' · ' + [x.kelas, x.jurusan].filter(Boolean).join(' ');
+      card.appendChild(meta);
+      if (x.fotoUrl) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'mt-auto w-full text-[11px] font-bold text-rose-600 border border-rose-200 rounded-lg py-1.5 hover:bg-rose-50';
+        b.innerHTML = '<i class="fas fa-trash mr-1"></i>Hapus foto';
+        b.onclick = () => psBukaHapus(x.nisn);
+        card.appendChild(b);
+      } else {
+        const t = document.createElement('p');
+        if (x.alasan) {
+          t.className = 'mt-auto text-[10.5px] leading-snug text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2';
+          t.textContent = 'Dihapus admin' + (x.tgl ? ' (' + x.tgl + ')' : '') + ': ' + x.alasan;
+        } else {
+          t.className = 'mt-auto text-[11px] text-center text-slate-400 font-semibold py-1.5';
+          t.textContent = 'Belum ada foto';
+        }
+        card.appendChild(t);
+      }
+      return card;
+    }
+    function renderProfilSiswa_(reset) {
+      const grid = document.getElementById('profilSiswaGrid'), info = document.getElementById('profilSiswaInfo'), more = document.getElementById('profilSiswaMoreWrap');
+      if (!grid) return;
+      if (reset) _psShown = PS_PAGE;
+      const list = psFiltered_();
+      const ada = _psData.filter(x => x.fotoUrl).length;
+      grid.textContent = '';
+      list.slice(0, _psShown).forEach(x => grid.appendChild(psCard_(x)));
+      if (!list.length) {
+        const e = document.createElement('p');
+        e.className = 'col-span-full text-center text-sm text-slate-400 py-10';
+        e.textContent = 'Tidak ada siswa yang cocok dengan filter.';
+        grid.appendChild(e);
+      }
+      info.textContent = 'Menampilkan ' + Math.min(_psShown, list.length) + ' dari ' + list.length + ' siswa · total ' + _psData.length + ' (' + ada + ' sudah ada foto, ' + (_psData.length - ada) + ' belum).';
+      more.classList.toggle('hidden', list.length <= _psShown);
+    }
+    function loadProfilSiswa() {
+      const info = document.getElementById('profilSiswaInfo');
+      if (info) info.textContent = 'Memuat...';
+      showStatusBar('Memuat profil siswa...', 50);
+      runServer('getFotoProfilSiswa', [psV_('psKelas') || 'ALL', psV_('psJurusan') || 'ALL'], { retries: 2 }).then(res => {
+        hideStatusBar();
+        if (!res || !res.success) { if (info) info.textContent = 'Gagal memuat data.'; return; }
+        _psData = res.siswa || [];
+        _psOpsi = res.alasan || [];
+        renderProfilSiswa_(true);
+      }, err => {
+        hideStatusBar();
+        if (info) info.textContent = 'Gagal memuat: ' + ((err && err.message) || err);
+      });
+    }
+    function psTeksAlasan_() {
+      const kode = psV_('psAlasan');
+      if (!kode) return '';
+      if (kode === 'lainnya') return psV_('psAlasanLain').replace(/\s+/g, ' ').trim();
+      const o = _psOpsi.find(a => a.kode === kode);
+      return o ? o.teks : '';
+    }
+    function psAlasanChange() {
+      document.getElementById('psAlasanLainWrap').classList.toggle('hidden', psV_('psAlasan') !== 'lainnya');
+      const t = psTeksAlasan_();
+      document.getElementById('psPreview').textContent = 'Foto profil Anda dihapus oleh admin.' + (t ? ' Alasan: ' + t + '.' : ' Alasan: (pilih alasan terlebih dahulu).') + ' Silakan ambil selfie baru dengan wajah tampak penuh.';
+      const er = document.getElementById('psModalErr'); er.classList.add('hidden');
+    }
+    function psBukaHapus(nisn) {
+      const x = _psData.find(a => String(a.nisn) === String(nisn));
+      if (!x || !x.fotoUrl) return;
+      _psSel = x;
+      psImg_(document.getElementById('psModalFoto'), x.fotoUrl, x.nama, 240);
+      document.getElementById('psModalNama').textContent = x.nama;
+      document.getElementById('psModalMeta').textContent = 'NISN ' + x.nisn + ' · ' + [x.kelas, x.jurusan].filter(Boolean).join(' ');
+      const sel = document.getElementById('psAlasan');
+      sel.innerHTML = '';
+      const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '— Pilih alasan —'; sel.appendChild(o0);
+      _psOpsi.forEach(a => { const o = document.createElement('option'); o.value = a.kode; o.textContent = a.teks; sel.appendChild(o); });
+      document.getElementById('psAlasanLain').value = '';
+      document.getElementById('psBtnHapus').disabled = false; document.getElementById('psBtnBatal').disabled = false;
+      psAlasanChange();
+      document.getElementById('profilHapusModal').classList.remove('hidden');
+    }
+    function psTutupHapus() { if (_psBusy) return; document.getElementById('profilHapusModal').classList.add('hidden'); _psSel = null; }
+    function psKonfirmasiHapus() {
+      if (_psBusy || !_psSel) return;
+      const kode = psV_('psAlasan'), er = document.getElementById('psModalErr');
+      if (!kode) { er.textContent = 'Pilih alasan penghapusan terlebih dahulu.'; er.classList.remove('hidden'); return; }
+      const lain = psV_('psAlasanLain').trim();
+      if (kode === 'lainnya' && lain.length < 5) { er.textContent = 'Tuliskan alasan minimal 5 karakter.'; er.classList.remove('hidden'); return; }
+      const x = _psSel;
+      _psBusy = true;
+      const bh = document.getElementById('psBtnHapus'), bb = document.getElementById('psBtnBatal');
+      bh.disabled = true; bb.disabled = true;
+      showStatusBar('Menghapus foto profil...', 50);
+      const selesai = () => { _psBusy = false; bh.disabled = false; bb.disabled = false; hideStatusBar(); };
+      runServer('hapusFotoProfilSiswa', [x.nisn, kode, lain], { retries: 0 }).then(res => {
+        selesai();
+        if (res && res.success) {
+          x.fotoUrl = ''; x.alasan = res.alasan || psTeksAlasan_(); x.tgl = res.tgl || '';
+          document.getElementById('profilHapusModal').classList.add('hidden'); _psSel = null;
+          renderProfilSiswa_(false);
+          alert(res.message || 'Foto profil dihapus.');
+        } else {
+          er.textContent = (res && res.message) || 'Gagal menghapus foto.'; er.classList.remove('hidden');
+        }
+      }, err => {
+        selesai();
+        er.textContent = 'Gagal menghapus: ' + ((err && err.message) || err); er.classList.remove('hidden');
+      });
+    }
+
     function switchAdminTab(tab) {
       const isUsers = (tab === 'users');
       const isSetting = (tab === 'setting');
@@ -4248,7 +4496,10 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const isReset = (tab === 'reset');
       const isTampilan = (tab === 'tampilan');
       const isAkun = (tab === 'akun');
+      const isProfil = (tab === 'profil');   // Revisi 118
 
+      document.getElementById('adminTabProfil').classList.toggle('hidden', !isProfil);
+      document.getElementById('adminTabProfilBtn').className = isProfil ? "tab-btn tab-btn-active" : "tab-btn";
       document.getElementById('adminTabAkun').classList.toggle('hidden', !isAkun);
       document.getElementById('adminTabAkunBtn').className = isAkun ? "tab-btn tab-btn-active" : "tab-btn";
       document.getElementById('adminTabUsers').classList.toggle('hidden', !isUsers);
@@ -4279,6 +4530,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       else if (isReset) loadAutoCleanSettings();
       else if (isTampilan) loadThemeSettingsAdmin();
       else if (isAkun) loadAdminAccountForm();
+      else if (isProfil) loadProfilSiswa();
     }
 
     /* ===== HARI SEKOLAH & HARI LIBUR (admin, tab Setting) ===== */
