@@ -946,6 +946,24 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
 
       <!-- Admin Tab Setting: GPS & Radius, Folder Foto, Backup Database (tiap pengaturan = satu kartu terpisah) -->
       <div id="adminTabSetting" class="hidden max-w-2xl space-y-6">
+       <!-- SAKLAR TURUNKAN KELAS (Revisi 121, dipindah ke kartu sendiri di Revisi 122) -->
+       <div id="kartuTurunKelas" class="bg-white rounded-2xl shadow-sm border p-6 space-y-4">
+         <div class="border-b pb-4">
+           <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-level-down-alt text-primary-600 mr-2"></i>Kelola Siswa Wali Kelas: Turunkan Kelas</h2>
+           <p class="text-xs text-slate-500 mt-1">Mengatur apakah tombol <b>Turunkan Kelas</b> tampil di tab Kelola Siswa panel Wali Kelas.</p>
+         </div>
+         <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border">
+           <div class="pr-4">
+             <h4 class="text-sm font-bold text-slate-800">Aktifkan Tombol Turunkan Kelas</h4>
+             <p class="text-xs text-slate-500 mt-0.5">Jika aktif, wali kelas XII/XI melihat tombol <b>Turunkan Kelas</b> (XII → XI, XI → X) untuk mengoreksi siswa yang salah dinaikkan. Jika dimatikan, tombol disembunyikan dan server menolak permintaannya. Disarankan dimatikan kembali setelah koreksi selesai.</p>
+             <p id="turunKelasStatus" class="text-[11px] font-bold mt-1.5 text-slate-400">Status: memuat...</p>
+           </div>
+           <label class="relative inline-flex items-center cursor-pointer flex-none">
+             <input type="checkbox" id="toggleTurunKelas" onchange="updateTurunKelasSetting()" class="sr-only peer">
+             <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-600"></div>
+           </label>
+         </div>
+       </div>
       <div class="bg-white rounded-2xl shadow-sm border p-6 space-y-6">
         <div class="border-b pb-4">
           <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-satellite-dish text-primary-600 mr-2"></i>Pengaturan Titik Pusat Sekolah, Radius & Proteksi GPS</h2>
@@ -1760,6 +1778,9 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
             </button>
             <button id="btnNaikKelas" onclick="naikKelasSubmit()" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition">
               <i class="fas fa-level-up-alt mr-1"></i> <span id="naikKelasLabel">Naik Kelas</span>
+            </button>
+            <button id="btnTurunKelas" onclick="turunKelasSubmit()" class="hidden bg-slate-600 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition">
+              <i class="fas fa-level-down-alt mr-1"></i> <span id="turunKelasLabel">Turunkan Kelas</span>
             </button>
             <button id="btnTamatKelas" onclick="tamatSubmit()" class="hidden bg-rose-700 hover:bg-rose-800 text-white px-3 py-2 rounded-lg text-xs font-bold transition">
               <i class="fas fa-graduation-cap mr-1"></i> Tamat (Hapus Data Lulusan)
@@ -2803,6 +2824,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         hideStatusBar();
         if (res && res.success) {
           currentUser = res.user;
+          window._turunKelas = (currentUser.role === 'Guru Wali Kelas' && currentUser.turunKelasAktif === true);   // Revisi 121: saklar dibaca saat login
           saveSession(currentUser);
           applyUserSession(currentUser);
         } else {
@@ -2825,6 +2847,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       clearSavedSession();
       dcGen++; dcClear_();   // cache laporan di perangkat tidak boleh terbawa ke akun lain
       currentUser = null;
+      window._turunKelas = false;   // Revisi 121
       appCache = { attendanceData: null, monthlyReportData: null, matrixReportData: null, studentsData: null };
       document.getElementById('userInfo').classList.add('hidden');
       ['adminDashboard', 'waliDashboard', 'studentDashboard', 'kepsekDashboard', 'barcodeDashboard'].forEach(id => {
@@ -4552,6 +4575,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         loadVerifikasiSettings(true);   // Revisi 105: bagian Penilaian Presensi ada di tab Setting, ikut dimuat di sini
         loadAdminGpsConfig();
         loadLokasiKeteranganSetting();
+        loadTurunKelasSetting();
         loadHariSekolahSetting();
         loadFotoFolderSettings();
         loadFotoProfilFolderSettings();
@@ -4653,6 +4677,38 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       gsr().withSuccessHandler(s => {
         document.getElementById('toggleLokasiKeterangan').checked = !!(s && s.aktif);
       }).getLokasiKeteranganSetting();
+    }
+
+    function turunKelasStatus_(aktif, err) {
+      const el = document.getElementById('turunKelasStatus');
+      if (!el) return;
+      if (err) { el.className = 'text-[11px] font-bold mt-1.5 text-rose-600'; el.textContent = 'Status: gagal memuat (' + err + '). Pastikan Apps Script sudah di-deploy ulang (versi baru).'; return; }
+      el.className = 'text-[11px] font-bold mt-1.5 ' + (aktif ? 'text-emerald-600' : 'text-slate-500');
+      el.textContent = aktif ? 'Status: AKTIF — tombol tampil di panel Wali Kelas' : 'Status: NONAKTIF — tombol disembunyikan';
+    }
+    function loadTurunKelasSetting() {
+      const cb = document.getElementById('toggleTurunKelas');
+      if (cb) cb.disabled = true;
+      gsr().withSuccessHandler(r => {
+        if (cb) { cb.disabled = false; cb.checked = !!(r && r.aktif === true); }
+        turunKelasStatus_(!!(r && r.aktif === true));
+      }).withFailureHandler(err => {
+        if (cb) cb.disabled = false;
+        turunKelasStatus_(false, (err && err.message) || err);
+      }).getTurunKelasSetting();
+    }
+    function updateTurunKelasSetting() {
+      const cb = document.getElementById('toggleTurunKelas');
+      const aktif = cb.checked;
+      showStatusBar('Menyimpan pengaturan Turunkan Kelas...', 40);
+      gsr().withSuccessHandler(res => {
+        hideStatusBar();
+        if (!res || !res.success) { alert('Gagal menyimpan: ' + ((res && res.message) || 'kesalahan tidak diketahui')); loadTurunKelasSetting(); return; }
+        turunKelasStatus_(aktif);
+      }).withFailureHandler(err => {
+        hideStatusBar();
+        alert('Gagal menyimpan: ' + ((err && err.message) || err)); loadTurunKelasSetting();
+      }).saveTurunKelasSetting({ aktif: aktif });
     }
 
     function updateLokasiKeterangan() {
@@ -5612,6 +5668,7 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
         initSekretarisRekapFilter();
         loadSekretarisRekap();
       } else if (tab === 'siswa') {
+        refreshTurunKelasSaklar_();   // Revisi 121: baca ulang saklar Admin setiap tab Kelola Siswa dibuka
         if (appCache.studentsData) renderStudentRows(appCache.studentsData);
         else loadWaliData();
       } else if (tab === 'akun') {
@@ -6537,6 +6594,9 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       const setShow = (id, show) => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', !show); };
       setShow('btnNaikKelas', k === 'X' || k === 'XI');
       setShow('btnTamatKelas', k === 'XII');
+      setShow('btnTurunKelas', window._turunKelas === true && (k === 'XI' || k === 'XII'));   // Revisi 121: hanya bila saklar admin aktif (default tersembunyi)
+      const lt = document.getElementById('turunKelasLabel');
+      if (lt) lt.innerText = k === 'XII' ? 'Turunkan Kelas (XII → XI)' : (k === 'XI' ? 'Turunkan Kelas (XI → X)' : 'Turunkan Kelas');
       const lbl = document.getElementById('naikKelasLabel');
       if (lbl) lbl.innerText = k === 'X' ? 'Naik Kelas (X → XI)' : (k === 'XI' ? 'Naik Kelas (XI → XII)' : 'Naik Kelas');
     }
@@ -6607,6 +6667,27 @@ div[id^="adminTab"]:not(.hidden), div[id^="waliTab"]:not(.hidden), div[id^="keps
       if (!(await askConfirm(`NAIK KELAS\n\n${t.scope} akan naik dari kelas ${k} ke kelas ${target} (jurusan tetap ${currentUser.jurusan}).\nRiwayat presensi siswa ikut berpindah ke kelas ${target}.\n\nLanjutkan?`))) return;
       showStatusBar('Menaikkan kelas...', 50);
       gsr().withSuccessHandler(finishClassAction).withFailureHandler(failClassAction).naikKelasSiswaBatch(t.ids);
+    }
+
+    /* ===== TURUNKAN KELAS (Revisi 121) — hanya muncul bila saklar di Admin > Setting aktif ===== */
+    window._turunKelas = false;
+    function refreshTurunKelasSaklar_() {
+      if (!currentUser || currentUser.role !== 'Guru Wali Kelas') { window._turunKelas = false; updateClassActionButtons(); return; }
+      runServer('getTurunKelasSetting', [], { retries: 2 }).then(r => {
+        window._turunKelas = !!(r && r.aktif === true);
+        updateClassActionButtons();
+      }, () => { window._turunKelas = false; updateClassActionButtons(); });   // gagal baca -> tombol tetap tersembunyi (aman)
+    }
+    async function turunKelasSubmit() {
+      if (window._turunKelas !== true) return alert('Fitur Turunkan Kelas sedang dinonaktifkan oleh Admin.');
+      const k = String(currentUser.kelas || '').trim().toUpperCase();
+      const target = k === 'XII' ? 'XI' : (k === 'XI' ? 'X' : '');
+      if (!target) return alert('Turunkan kelas hanya untuk kelas XI dan XII.');
+      const t = getClassActionTargets();
+      if (t.ids.length === 0) return;
+      if (!(await askConfirm(`TURUNKAN KELAS\n\n${t.scope} akan DITURUNKAN dari kelas ${k} ke kelas ${target} (jurusan tetap ${currentUser.jurusan}).\nSiswa akan pindah ke daftar wali kelas ${target}, dan riwayat presensinya ikut berpindah ke kelas ${target}.\n\nIni kebalikan dari Naik Kelas. Pastikan Anda tidak salah klik.\n\nLanjutkan?`))) return;
+      showStatusBar('Menurunkan kelas...', 50);
+      gsr().withSuccessHandler(r => { finishClassAction(r); refreshTurunKelasSaklar_(); }).withFailureHandler(failClassAction).turunKelasSiswaBatch(t.ids);
     }
 
     async function tamatSubmit() {
